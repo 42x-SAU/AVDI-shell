@@ -209,3 +209,5 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+/bin/

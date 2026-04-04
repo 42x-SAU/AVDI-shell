@@ -9,11 +9,15 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
+	"diag-system/internal/deploy"
 	"diag-system/internal/diagnostics"
+
+	"golang.org/x/term"
 )
 
 const (
@@ -31,15 +35,6 @@ type createTaskRequest struct {
 	CheckType  string `json:"check_type"`
 	Payload    string `json:"payload"`
 	MaxRetries int    `json:"max_retries"`
-}
-
-type registerAgentRequest struct {
-	Name string `json:"name"`
-}
-
-type registerAgentResponse struct {
-	AgentID int64  `json:"agent_id"`
-	Token   string `json:"token"`
 }
 
 type Agent struct {
@@ -154,8 +149,8 @@ func main() {
 				printError(err.Error())
 			}
 
-		case "register-agent", "add-agent":
-			if err := cmdRegisterAgent(client, serverURL, args[1:]); err != nil {
+		case "deploy-agent":
+			if err := cmdDeployAgent(args[1:]); err != nil {
 				printError(err.Error())
 			}
 
@@ -201,11 +196,9 @@ func printHelp() {
 	fmt.Println("      Show task results")
 	fmt.Println("      --logs   print full stdout/stderr/logs")
 	fmt.Println()
-	fmt.Println("  register-agent --name <value>")
-	fmt.Println("      Register a new agent through POST /agents/register")
-	fmt.Println()
-	fmt.Println("  add-agent --name <value>")
-	fmt.Println("      Alias for register-agent")
+	fmt.Println("  deploy-agent --ssh-host <host> --ssh-user <user> --server-url <url> --agent-name <name> --image <ref>")
+	fmt.Println("      Deploy agent container on remote host over SSH (auto-registers on server)")
+	fmt.Println("      Optional flags: --ssh-port <n> (default 22) | --ssh-password <pwd> | --container <name> | --skip-pull")
 	fmt.Println()
 	fmt.Println("  create-task --agent <id> --check <hostname|ping|ports|diagnostic> [--payload <value>] [--retries <n>]")
 	fmt.Println("      Create a new diagnostic task (diagnostic check requires payload with command name)")
@@ -237,8 +230,7 @@ func printHelp() {
 	fmt.Println("  tasks")
 	fmt.Println("  results")
 	fmt.Println("  results --logs")
-	fmt.Println("  register-agent --name demo-agent")
-	fmt.Println("  add-agent --name demo-agent")
+	fmt.Println("  deploy-agent --ssh-host 192.168.1.100 --ssh-user root --server-url http://localhost:8081 --agent-name prod-agent1 --image avdi:latest")
 	fmt.Println("  create-task --agent 3 --check hostname")
 	fmt.Println("  create-task --agent 3 --check ping --payload 8.8.8.8")
 	fmt.Println("  create-task --agent 3 --check ports")
@@ -246,7 +238,7 @@ func printHelp() {
 	fmt.Println("  diagnostic-list")
 	fmt.Println("  diagnostic-run --command hostname --json")
 	fmt.Println("  diagnostic-run --command ping-target --var target=google.com")
-	fmt.Println("  post /agents/register '{\"name\":\"manual-agent\"}'")
+	fmt.Println("  deploy-agent --ssh-host 192.168.1.100 --ssh-user root --server-url http://server:8081 --agent-name agent1 --image avdi:latest")
 	fmt.Println()
 }
 
@@ -422,32 +414,82 @@ func cmdCreateTask(client *http.Client, serverURL string, args []string) error {
 	return nil
 }
 
-func cmdRegisterAgent(client *http.Client, serverURL string, args []string) error {
-	fs := flag.NewFlagSet("register-agent", flag.ContinueOnError)
+func cmdDeployAgent(args []string) error {
+	fs := flag.NewFlagSet("deploy-agent", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
-	name := fs.String("name", "", "Agent name")
+	sshHost := fs.String("ssh-host", "", "Remote host (hostname or IP)")
+	sshUser := fs.String("ssh-user", "", "SSH user")
+	sshPassword := fs.String("ssh-password", "", "SSH password (optional: use AVDI_SSH_PASSWORD or prompt)")
+	sshPort := fs.Int("ssh-port", 22, "SSH TCP port (default 22; if omitted, AVDI_SSH_PORT is used when set)")
+	serverURL := fs.String("server-url", "", "AVDI API base URL reachable from the agent host")
+	agentName := fs.String("agent-name", "", "Agent display name (registered on first start)")
+	image := fs.String("image", "", "Docker image ref (must exist in a registry you can pull, or use --skip-pull if already on the host)")
+	container := fs.String("container", "avdi-agent", "Container name on the remote host")
+	skipPull := fs.Bool("skip-pull", false, "Skip docker pull (use when the image is already on the remote: docker load, local build, etc.)")
+
 	if err := fs.Parse(args); err != nil {
-		return fmt.Errorf("failed to parse flags: %w", err)
-	}
-	if strings.TrimSpace(*name) == "" {
-		return fmt.Errorf("--name is required")
+		return fmt.Errorf("parse flags: %w", err)
 	}
 
-	reqBody := registerAgentRequest{Name: strings.TrimSpace(*name)}
-	var out registerAgentResponse
-	status, err := postJSON(client, joinURL(serverURL, "/agents/register"), reqBody, &out)
-	if err != nil {
-		return err
+	if *sshHost == "" {
+		return fmt.Errorf("--ssh-host is required")
 	}
-	if status != http.StatusCreated {
-		return fmt.Errorf("unexpected status: %d", status)
+	if *sshUser == "" {
+		return fmt.Errorf("--ssh-user is required")
+	}
+	if *serverURL == "" {
+		return fmt.Errorf("--server-url is required")
+	}
+	if *agentName == "" {
+		return fmt.Errorf("--agent-name is required")
+	}
+	if *image == "" {
+		return fmt.Errorf("--image is required")
 	}
 
-	printSuccess("agent registered")
-	fmt.Printf("Agent ID: %d\n", out.AgentID)
-	fmt.Printf("Token:    %s\n", out.Token)
-	return nil
+	port := *sshPort
+	explicitSSHPort := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "ssh-port" {
+			explicitSSHPort = true
+		}
+	})
+	if !explicitSSHPort {
+		if v := strings.TrimSpace(os.Getenv("AVDI_SSH_PORT")); v != "" {
+			p, err := strconv.Atoi(v)
+			if err != nil || p < 1 || p > 65535 {
+				return fmt.Errorf("AVDI_SSH_PORT must be an integer 1–65535")
+			}
+			port = p
+		}
+	}
+
+	password := *sshPassword
+	if password == "" {
+		password = os.Getenv("AVDI_SSH_PASSWORD")
+	}
+	if password == "" {
+		fmt.Fprint(os.Stderr, "SSH password: ")
+		b, err := term.ReadPassword(int(os.Stdin.Fd()))
+		if err != nil {
+			return fmt.Errorf("read password: %w", err)
+		}
+		fmt.Fprintln(os.Stderr)
+		password = string(b)
+	}
+
+	return deploy.DeployDockerAgent(deploy.Options{
+		Host:          *sshHost,
+		Port:          port,
+		User:          *sshUser,
+		Secret:        password,
+		ServerURL:     *serverURL,
+		AgentName:     *agentName,
+		Image:         *image,
+		ContainerName: *container,
+		SkipPull:      *skipPull,
+	})
 }
 
 func cmdRawGet(client *http.Client, serverURL string, args []string) error {

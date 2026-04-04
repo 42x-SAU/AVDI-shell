@@ -23,6 +23,32 @@
 - ✅ Поддержка таймаутов для выполнения команд
 - ✅ Переиспользование и повторные попытки выполнения задач
 
+## Оглавление
+
+- [Описание](#описание)
+- [Ключевые возможности](#ключевые-возможности)
+- [Архитектура](#архитектура)
+  - [Компоненты системы](#компоненты-системы)
+  - [Основные компоненты](#основные-компоненты)
+- [Структура проекта](#структура-проекта)
+- [Установка и настройка](#установка-и-настройка)
+- [Использование](#использование)
+  - [REST API](#rest-api)
+  - [Интерактивная Shell](#интерактивная-shell)
+- [Конфигурация диагностических команд](#конфигурация-диагностических-команд)
+- [Модели данных](#модели-данных)
+- [Поток выполнения](#поток-выполнения)
+- [Docker](#docker)
+- [Система мониторинга и логирование](#система-мониторинга-и-логирование)
+- [Расширение функционала](#расширение-функционала)
+- [Безопасность](#безопасность)
+- [Разработка](#разработка)
+- [Troubleshooting](#troubleshooting)
+- [Производительность](#производительность)
+- [Лицензия](#лицензия)
+- [Контакты и поддержка](#контакты-и-поддержка)
+- [Благодарности](#благодарности)
+
 ## Архитектура
 
 ### Компоненты системы
@@ -74,7 +100,6 @@ avdi/
 ├── cmd/                              # Точки входа приложений
 │   ├── server/main.go               # REST сервер
 │   ├── agent/main.go                # Диагностический агент
-│   ├── ctl/main.go                  # CLI утилита управления
 │   └── shell/main.go                # Интерактивная shell
 │
 ├── internal/                         # Внутренние пакеты
@@ -173,10 +198,7 @@ go build -o bin/server ./cmd/server
 # Агент
 go build -o bin/agent ./cmd/agent
 
-# CLI утилита
-go build -o bin/ctl ./cmd/ctl
-
-# Shell
+# Shell (интерактивный интерфейс)
 go build -o bin/shell ./cmd/shell
 ```
 
@@ -228,13 +250,6 @@ curl http://localhost:8080/health
 **Список активных агентов:**
 ```bash
 curl http://localhost:8080/agents
-```
-
-**Регистрация нового агента:**
-```bash
-curl -X POST http://localhost:8080/agents/register \
-  -H "Content-Type: application/json" \
-  -d '{"name":"agent-1"}'
 ```
 
 **Heartbeat (отправка статуса агентом):**
@@ -290,23 +305,60 @@ curl -X POST http://localhost:8080/agents/tasks/result \
 curl http://localhost:8080/results
 ```
 
-### CLI утилита (ctl)
-
-```bash
-# Получить список агентов
-./bin/ctl agents list
-
-# Создать задачу
-./bin/ctl tasks create --agent-id 1 --check-type hostname
-
-# Посмотреть результаты
-./bin/ctl results list
-```
-
 ### Интерактивная Shell
+
+Интерактивная shell - это основной интерфейс для работы с AVDI системой, предоставляющий удобный командный интерфейс:
 
 ```bash
 ./bin/shell
+```
+
+**Доступные команды в shell:**
+
+| Команда | Описание |
+|---------|---------|
+| `health` | Проверить статус сервера |
+| `agents` | Показать список активных агентов |
+| `tasks` | Показать список задач |
+| `results [--logs]` | Показать результаты выполнения задач |
+| `deploy-agent --ssh-host <хост> --ssh-user <пользователь> --server-url <url> --agent-name <имя> --image <образ>` | **Развернуть агента на удалённом хосте по SSH (автоматическая регистрация)** |
+| `create-task --agent <id> --check <тип> [--payload <данные>]` | Создать новую диагностическую задачу |
+| `diagnostic-list` | Показать доступные диагностические команды |
+| `diagnostic-run --command <имя> [--var ключ=значение]` | Выполнить диагностическую команду локально |
+| `server <url>` | Изменить URL активного сервера |
+| `help` | Показать справку |
+| `exit` или `quit` | Выход из shell |
+
+**Примеры использования deploy-agent:**
+
+```bash
+# Развернуть агент с интерактивным вводом пароля
+deploy-agent --ssh-host 192.168.1.100 \
+  --ssh-user root \
+  --server-url http://localhost:8081 \
+  --agent-name prod-agent1 \
+  --image avdi:latest
+
+# С явно заданным паролем
+deploy-agent --ssh-host 192.168.1.100 \
+  --ssh-user root \
+  --ssh-password mypassword \
+  --ssh-port 2222 \
+  --server-url http://10.0.0.1:8081 \
+  --agent-name agent1 \
+  --image localhost:5000/avdi:latest \
+  --container my-agent \
+  --skip-pull
+```
+
+**Переменные окружения для SSH развёртывания:**
+
+```bash
+export AVDI_SSH_PASSWORD="пароль"  # Пароль SSH (альтернатива --ssh-password)
+export AVDI_SSH_PORT=2222          # Порт SSH (если не 22)
+
+./bin/shell
+# теперь deploy-agent не будет запрашивать пароль
 ```
 
 ## Конфигурация диагностических команд
@@ -451,36 +503,189 @@ sequenceDiagram
 
 ## Docker
 
+### Подготовка Docker images
+
+Перед использованием `deploy-agent` для развёртывания агентов на удалённых хостах необходимо создать и опубликовать Docker images.
+
+#### 1. Сборка образа агента локально
+
+```bash
+cd /path/to/avdi
+
+# Базовая сборка с локальным тегом
+docker build -f docker/agent.Dockerfile -t avdi-agent:latest .
+
+# Проверка что образ собран
+docker images | grep avdi-agent
+```
+
+#### 2. Работа с Docker Registry
+
+**Вариант A: Docker Hub**
+
+```bash
+# Логин в Docker Hub
+docker login
+
+# Пересоздаём образ с тегом Docker Hub (username->ваше имя пользователя)
+docker build -f docker/agent.Dockerfile -t username/avdi-agent:latest .
+
+# Отправляем образ в Docker Hub
+docker push username/avdi-agent:latest
+
+# При deploy-agent используем:
+# deploy-agent ... --image username/avdi-agent:latest
+```
+
+**Вариант B: Приватный Docker Registry**
+
+```bash
+# Пересоздаём образ с тегом приватного registry (registry.example.com->ваш registry)
+docker build -f docker/agent.Dockerfile -t registry.example.com/avdi-agent:latest .
+
+# Отправляем образ в приватный registry
+docker push registry.example.com/avdi-agent:latest
+
+# При deploy-agent используем:
+# deploy-agent ... --image registry.example.com/avdi-agent:latest
+```
+
+**Вариант C: Локальная загрузка образа**
+
+```bash
+# Сохраняем образ в файл tar
+docker save avdi-agent:latest -o avdi-agent.tar
+
+# На удалённом хосте загружаем образ
+docker load -i avdi-agent.tar
+
+# При deploy-agent используем флаг --skip-pull (так как образ уже на хосте):
+# deploy-agent ... --image avdi-agent:latest --skip-pull
+```
+
+#### 3. Сборка образа сервера (опционально)
+
+```bash
+# Образ сервера для тестирования локально или в Docker Compose
+docker build -f docker/server.Dockerfile -t avdi-server:latest .
+
+# Запуск сервера локально в контейнере
+docker run -p 8080:8080 \
+  -e DATABASE_URL=postgres://user:pass@db:5432/avdi \
+  avdi-server:latest
+```
+
 ### Структура Dockerfile
 
 #### Agent (agent.Dockerfile)
 
 ```dockerfile
-# Multi-stage build для минимизации размера
 FROM golang:1.25-alpine AS builder
-# Сборка приложения
+WORKDIR /app
+COPY go.mod go.sum* ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /agent ./cmd/agent
 
 FROM alpine:3.20
-# Базовый образ с необходимыми утилитами:
-# - iputils (ping, traceroute)
-# - iproute2 (ip команды)
-# - net-tools (netstat и т.д.)
-# - nmap (сканирование портов)
-# - curl (HTTP запросы)
-# - bind-tools (DNS утилиты)
+RUN apk add --no-cache iputils iproute2 net-tools nmap curl bind-tools
+WORKDIR /app
+COPY --from=builder /agent /agent
+COPY diagnostics.yaml /etc/avdi/diagnostics.yaml
+CMD ["/agent"]
 ```
 
-### Запуск через Docker
+**Multi-stage build преимущества:**
+- ✅ Минимальный размер финального образа (~10MB вместо 500MB+)
+- ✅ Финальный образ содержит только runtime, без Go компилятора
+- ✅ Быстрый запуск контейнера
+
+**Установленные утилиты в контейнере агента:**
+- `iputils` - ping, traceroute
+- `iproute2` - ip адреса, маршруты
+- `net-tools` - netstat, ifconfig
+- `nmap` - сканирование портов
+- `curl` - HTTP запросы
+- `bind-tools` - DNS утилиты (nslookup, dig)
+
+#### Server (server.Dockerfile)
+
+```dockerfile
+FROM golang:1.25-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum* ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/server
+
+FROM alpine:3.20
+WORKDIR /app
+COPY --from=builder /server /server
+EXPOSE 8080
+CMD ["/server"]
+```
+
+### Полный workflow: от сборки до deploy
 
 ```bash
-# Сборка образа агента
-docker build -f docker/agent.Dockerfile -t avdi-agent .
+# 1. Собираем образ агента
+docker build -f docker/agent.Dockerfile -t myregistry.com/avdi-agent:v1.0 .
 
-# Запуск контейнера
-docker run --rm \
-  -e SERVER_URL=http://server:8080 \
-  -e AGENT_NAME=agent-1 \
-  avdi-agent
+# 2. Отправляем в registry
+docker push myregistry.com/avdi-agent:v1.0
+
+# 3. Запускаем shell
+./bin/shell
+
+# 4. В shell развёртываем агента на удалённом хосте
+deploy-agent \
+  --ssh-host 192.168.1.100 \
+  --ssh-user ubuntu \
+  --server-url http://10.0.0.1:8080 \
+  --agent-name prod-agent-1 \
+  --image myregistry.com/avdi-agent:v1.0
+
+# 5. На удалённом хосте:
+# - Агент скачивается из registry (docker pull)
+# - Запускается контейнер (docker run)
+# - Автоматически регистрируется на сервере
+# - Начинает выполнять задачи
+```
+
+### Версионирование образов
+
+Рекомендуется использовать semantic versioning:
+
+```bash
+# Разработка
+docker build -f docker/agent.Dockerfile -t avdi-agent:dev .
+docker push avdi-agent:dev
+
+# Тестирование
+docker build -f docker/agent.Dockerfile -t avdi-agent:1.0.0-beta .
+docker push avdi-agent:1.0.0-beta
+
+# Production
+docker build -f docker/agent.Dockerfile -t avdi-agent:1.0.0 .
+docker push avdi-agent:1.0.0
+
+# Latest
+docker build -f docker/agent.Dockerfile -t avdi-agent:latest .
+docker push avdi-agent:latest
+```
+
+### Запуск через Docker Compose
+
+```bash
+# Локальный запуск системы для тестирования
+docker-compose up -d
+
+# Просмотр логов
+docker-compose logs -f server
+docker-compose logs -f agent
+
+# Остановка
+docker-compose down
 ```
 
 ## Система мониторинга и логирование
