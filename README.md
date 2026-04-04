@@ -1,3 +1,4 @@
 # AVDI-shell
-! [Логотип проекта AVDI-Shell] (frontend/contents/logo.png)
+! [Логотип проекта AVDI-Shell] (https://github.com/42x-SAU/AVDI-shell/blob/main/frontend/contents/logo.png)
+
 Test
