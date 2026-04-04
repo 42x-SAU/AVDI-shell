@@ -291,3 +291,5 @@ docker-compose down
 
 - **Issues:** [GitHub Issues](https://github.com/42x-SAU/AVDI-shell/issues)
 - **Discussions:** [GitHub Discussions](https://github.com/42x-SAU/AVDI-shell/discussions)
+
+Првиет, potjoke
