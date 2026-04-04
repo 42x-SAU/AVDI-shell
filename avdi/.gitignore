@@ -193,11 +193,6 @@ build/
 .env.local
 .env.*.local
 
-# Docker
-.dockerignore
-Dockerfile
-docker-compose.yml
-
 # Secret keys / config
 secrets.yaml
 config.local.yaml

@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: diag
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+
+  server:
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: diag
+      DB_SSLMODE: disable
+      SERVER_ADDR: :8080
+    depends_on:
+      - postgres
+    ports:
+      - "8081:8080"
+
+  agent:
+    build:
+      context: .
+      dockerfile: docker/agent.Dockerfile
+    environment:
+      SERVER_URL: http://server:8080
+      AGENT_NAME: demo-agent
+    depends_on:
+      - server
+
+volumes:
+  pgdata:
