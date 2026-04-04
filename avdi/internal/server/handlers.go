@@ -307,6 +307,53 @@ func randomToken(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+func (s *Server) handleRetryTask(w http.ResponseWriter, r *http.Request) {
+	// Извлекаем ID задачи из пути
+	idStr := r.PathValue("id")
+	taskID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid task ID", http.StatusBadRequest)
+		return
+	}
+
+	// Проверяем существование задачи и её текущий статус
+	var status string
+	var agentID int64
+	err = s.db.QueryRowContext(r.Context(), `
+		SELECT status, agent_id FROM tasks WHERE id = $1
+	`, taskID).Scan(&status, &agentID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "task not found", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Разрешаем перезапуск только для завершённых (failed или done) задач
+	if status != "failed" && status != "done" {
+		http.Error(w, "task cannot be retried (must be failed or done)", http.StatusConflict)
+		return
+	}
+
+	// Обновляем задачу: статус pending, сбрасываем started_at и finished_at
+	_, err = s.db.ExecContext(r.Context(), `
+		UPDATE tasks
+		SET status = 'pending', started_at = NULL, finished_at = NULL
+		WHERE id = $1
+	`, taskID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "task scheduled for retry",
+		"task_id": idStr,
+	})
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

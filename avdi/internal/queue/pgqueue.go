@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
- go build ./cmd/serve
+
 	"diag-system/internal/storage"
 )
 
@@ -15,8 +15,9 @@ var (
 )
 
 type PGQueue struct {
-	db      *sql.DB
-	limiter *Limiter
+	db           *sql.DB
+	limiter      *Limiter
+	retryManager *RetryManager
 }
 
 func New(db *sql.DB) *PGQueue {
@@ -26,6 +27,31 @@ func New(db *sql.DB) *PGQueue {
 // NewWithLimiter создаёт очередь с лимитером для ограничения одновременных задач.
 func NewWithLimiter(db *sql.DB, limiter *Limiter) *PGQueue {
 	return &PGQueue{db: db, limiter: limiter}
+}
+
+// NewWithRetryManager создаёт очередь с менеджером повторных попыток.
+func NewWithRetryManager(db *sql.DB, retryManager *RetryManager) *PGQueue {
+	return &PGQueue{db: db, retryManager: retryManager}
+}
+
+// SetRetryManager устанавливает менеджер повторных попыток.
+func (q *PGQueue) SetRetryManager(rm *RetryManager) {
+	q.retryManager = rm
+}
+
+// RetryTask переводит задачу в статус pending для повторного выполнения.
+// Используется менеджером повторных попыток после истечения задержки.
+// Предполагается, что retry_count уже увеличен при предыдущей неудаче.
+func (q *PGQueue) RetryTask(ctx context.Context, taskID, agentID int64) error {
+	_, err := q.db.ExecContext(ctx, `
+		UPDATE tasks
+		SET
+			status = 'pending',
+			started_at = NULL,
+			finished_at = NULL
+		WHERE id = $1 AND agent_id = $2
+	`, taskID, agentID)
+	return err
 }
 
 func (q *PGQueue) EnqueueTask(ctx context.Context, agentID int64, checkType, payload string, maxRetries int) error {
@@ -151,26 +177,84 @@ func (q *PGQueue) CompleteTask(ctx context.Context, agentID, taskID int64, exitC
 	}
 
 	if exitCode != 0 {
-		_, err = tx.ExecContext(ctx, `
-			UPDATE tasks
-			SET
-				status = CASE
-					WHEN retry_count + 1 <= max_retries THEN 'pending'
-					ELSE 'failed'
-				END,
-				retry_count = retry_count + 1,
-				started_at = CASE
-					WHEN retry_count + 1 <= max_retries THEN NULL
-					ELSE started_at
-				END,
-				finished_at = CASE
-					WHEN retry_count + 1 <= max_retries THEN NULL
-					ELSE NOW()
-				END
-			WHERE id = $1 AND agent_id = $2 AND retry_count < max_retries
-		`, taskID, agentID)
+		// Получаем текущие retry_count и max_retries для решения о повторной попытке
+		var retryCount, maxRetries int
+		err = tx.QueryRowContext(ctx, `
+			SELECT retry_count, max_retries
+			FROM tasks
+			WHERE id = $1 AND agent_id = $2
+		`, taskID, agentID).Scan(&retryCount, &maxRetries)
 		if err != nil {
 			return err
+		}
+
+		// Увеличиваем счётчик попыток
+		retryCount++
+
+		// Проверяем, можно ли повторить
+		if retryCount <= maxRetries {
+			// Если есть менеджер повторных попыток, планируем отложенный перезапуск
+			if q.retryManager != nil {
+				// Сначала обновляем retry_count в базе, но оставляем статус 'failed'
+				// (задача будет перезапущена позже через отложенную очередь)
+				_, err = tx.ExecContext(ctx, `
+					UPDATE tasks
+					SET retry_count = $3, status = 'failed'
+					WHERE id = $1 AND agent_id = $2
+				`, taskID, agentID, retryCount)
+				if err != nil {
+					return err
+				}
+				// Коммитим транзакцию, чтобы изменения сохранились
+				if err := tx.Commit(); err != nil {
+					return err
+				}
+				// После коммита планируем повторную попытку
+				// Нужно получить полный объект задачи
+				task := &storage.Task{
+					ID:         taskID,
+					AgentID:    agentID,
+					RetryCount: retryCount - 1, // до увеличения
+					MaxRetries: maxRetries,
+				}
+				scheduled, err := q.retryManager.ScheduleRetry(ctx, task)
+				if err != nil {
+					// Логируем ошибку, но не прерываем выполнение
+					// TODO: добавить логгер
+				} else if !scheduled {
+					// Не удалось запланировать (например, превышен лимит попыток)
+					// Оставляем статус failed
+				}
+				// Уменьшаем счётчик активных задач агента
+				if q.limiter != nil {
+					q.limiter.Release(ctx, agentID)
+				}
+				return nil
+			} else {
+				// Старая логика: немедленный перевод в pending
+				_, err = tx.ExecContext(ctx, `
+					UPDATE tasks
+					SET
+						status = 'pending',
+						retry_count = $3,
+						started_at = NULL,
+						finished_at = NULL
+					WHERE id = $1 AND agent_id = $2
+				`, taskID, agentID, retryCount)
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			// Превышен лимит попыток, оставляем статус failed
+			_, err = tx.ExecContext(ctx, `
+				UPDATE tasks
+				SET retry_count = $3, status = 'failed'
+				WHERE id = $1 AND agent_id = $2
+			`, taskID, agentID, retryCount)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
