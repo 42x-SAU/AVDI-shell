@@ -4,21 +4,28 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-
+ go build ./cmd/serve
 	"diag-system/internal/storage"
 )
 
 var (
 	ErrNoTask       = errors.New("no task available")
 	ErrTaskNotFound = errors.New("task not found or not owned by this agent")
+	ErrRateLimited  = errors.New("agent has reached concurrent task limit")
 )
 
 type PGQueue struct {
-	db *sql.DB
+	db      *sql.DB
+	limiter *Limiter
 }
 
 func New(db *sql.DB) *PGQueue {
 	return &PGQueue{db: db}
+}
+
+// NewWithLimiter создаёт очередь с лимитером для ограничения одновременных задач.
+func NewWithLimiter(db *sql.DB, limiter *Limiter) *PGQueue {
+	return &PGQueue{db: db, limiter: limiter}
 }
 
 func (q *PGQueue) EnqueueTask(ctx context.Context, agentID int64, checkType, payload string, maxRetries int) error {
@@ -30,8 +37,24 @@ func (q *PGQueue) EnqueueTask(ctx context.Context, agentID int64, checkType, pay
 }
 
 func (q *PGQueue) GetNextTask(ctx context.Context, agentID int64) (*storage.Task, error) {
+	// Проверяем лимит одновременных задач, если лимитер настроен
+	if q.limiter != nil {
+		canAcquire, err := q.limiter.CanAcquire(ctx, agentID)
+		if err != nil {
+			return nil, err
+		}
+		if !canAcquire {
+			return nil, ErrRateLimited
+		}
+		// CanAcquire уже увеличил счётчик, поэтому дополнительное увеличение не требуется
+	}
+
 	tx, err := q.db.BeginTx(ctx, nil)
 	if err != nil {
+		// Если транзакция не началась, нужно откатить увеличение счётчика
+		if q.limiter != nil {
+			q.limiter.Release(ctx, agentID)
+		}
 		return nil, err
 	}
 	defer tx.Rollback()
@@ -66,15 +89,28 @@ func (q *PGQueue) GetNextTask(ctx context.Context, agentID int64) (*storage.Task
 		&t.FinishedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			// Задач нет, нужно уменьшить счётчик, который мы увеличили ранее
+			if q.limiter != nil {
+				q.limiter.Release(ctx, agentID)
+			}
 			return nil, ErrNoTask
+		}
+		// Ошибка сканирования, также уменьшаем счётчик
+		if q.limiter != nil {
+			q.limiter.Release(ctx, agentID)
 		}
 		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
+		// Ошибка коммита, уменьшаем счётчик
+		if q.limiter != nil {
+			q.limiter.Release(ctx, agentID)
+		}
 		return nil, err
 	}
 
+	// Успешно взяли задачу, счётчик уже увеличен
 	return &t, nil
 }
 
@@ -138,5 +174,18 @@ func (q *PGQueue) CompleteTask(ctx context.Context, agentID, taskID int64, exitC
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	// После успешного коммита уменьшаем счётчик активных задач агента
+	if q.limiter != nil {
+		_, err = q.limiter.Release(ctx, agentID)
+		if err != nil {
+			// Логируем ошибку, но не прерываем выполнение, так как задача уже завершена
+			// В будущем можно добавить повторные попытки или dead letter queue
+		}
+	}
+
+	return nil
 }

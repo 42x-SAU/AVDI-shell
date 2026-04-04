@@ -6,6 +6,7 @@ import (
     "os"
 
     "diag-system/internal/queue"
+    "diag-system/internal/redis"
     "diag-system/internal/storage"
 )
 
@@ -26,9 +27,20 @@ func New() (*Server, error) {
         return nil, err
     }
 
+    // Создаём Redis клиент для лимитера и WebSocket
+    redisClient, err := redis.NewClientFromEnv()
+    var limiter *queue.Limiter
+    if err != nil {
+        // Если Redis недоступен, логируем ошибку, но продолжаем без лимитера
+        // В production следует решить, нужно ли падать или работать без ограничений
+        // Пока просто оставляем limiter = nil
+    } else {
+        limiter = queue.NewLimiter(redisClient, 0) // 0 означает использовать значение из окружения
+    }
+
     s := &Server{
         db:    db,
-        queue: queue.New(db),
+        queue: queue.NewWithLimiter(db, limiter),
         mux:   http.NewServeMux(),
         addr:  getenv("SERVER_ADDR", ":8080"),
         hub:   NewHub(),
