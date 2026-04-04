@@ -14,6 +14,7 @@ type Server struct {
     queue *queue.PGQueue
     mux   *http.ServeMux
     addr  string
+    hub   *Hub
 }
 
 func New() (*Server, error) {
@@ -30,8 +31,11 @@ func New() (*Server, error) {
         queue: queue.New(db),
         mux:   http.NewServeMux(),
         addr:  getenv("SERVER_ADDR", ":8080"),
+        hub:   NewHub(),
     }
     s.routes()
+    // Запускаем хаб в горутине
+    go s.hub.Run()
     return s, nil
 }
 
@@ -45,6 +49,17 @@ func (s *Server) routes() {
     s.mux.HandleFunc("GET /results", s.handleListResults)
     s.mux.HandleFunc("GET /agents/tasks/next", s.withAgentAuth(s.handleNextTask))
     s.mux.HandleFunc("POST /agents/tasks/result", s.withAgentAuth(s.handleSubmitResult))
+    // WebSocket endpoint
+    s.mux.HandleFunc("GET /ws", s.handleWebSocket)
+}
+
+func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+    // Проверяем, включен ли WebSocket (опционально)
+    if enabled := os.Getenv("WEBSOCKET_ENABLED"); enabled == "false" {
+        http.Error(w, "WebSocket is disabled", http.StatusServiceUnavailable)
+        return
+    }
+    ServeWebSocket(s.hub, w, r)
 }
 
 func (s *Server) Run() error {
