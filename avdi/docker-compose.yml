@@ -17,6 +17,16 @@ services:
       retries: 20
       start_period: 40s
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   server:
     build:
       context: .
@@ -28,9 +38,16 @@ services:
       DB_PASSWORD: postgres
       DB_NAME: diag
       DB_SSLMODE: disable
+      REDIS_URL: redis://redis:6379
+      WEBSOCKET_ENABLED: "true"
+      MAX_CONCURRENT_TASKS_PER_AGENT: "3"
+      BASE_RETRY_DELAY_SECONDS: "30"
+      MAX_RETRY_DELAY_SECONDS: "3600"
       SERVER_ADDR: :8080
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "8081:8080"
@@ -42,8 +59,11 @@ services:
     environment:
       SERVER_URL: http://server:8080
       AGENT_NAME: demo-agent
+      REDIS_URL: redis://redis:6379
+      WEBSOCKET_ENABLED: "true"
     depends_on:
       - server
+      - redis
 
 volumes:
   pgdata:
