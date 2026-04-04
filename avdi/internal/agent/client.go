@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"diag-system/internal/httputil"
 )
 
 type Client struct {
@@ -16,6 +18,7 @@ type Client struct {
 }
 
 func NewClient(baseURL string) *Client {
+	baseURL = httputil.NormalizeHTTPBaseURL(baseURL)
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		http:    &http.Client{Timeout: 30 * time.Second},

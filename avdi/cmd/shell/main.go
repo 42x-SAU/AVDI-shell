@@ -16,6 +16,7 @@ import (
 
 	"diag-system/internal/deploy"
 	"diag-system/internal/diagnostics"
+	"diag-system/internal/httputil"
 
 	"golang.org/x/term"
 )
@@ -69,7 +70,7 @@ type TaskResult struct {
 }
 
 func main() {
-	serverURL := getenv("AVDI_SERVER", "http://localhost:8081")
+	serverURL := httputil.NormalizeHTTPBaseURL(getenv("AVDI_SERVER", "http://localhost:8081"))
 	client := &http.Client{Timeout: 20 * time.Second}
 
 	clearScreen()
@@ -111,7 +112,7 @@ func main() {
 				printError("usage: server <url>")
 				continue
 			}
-			serverURL = strings.TrimSpace(args[1])
+			serverURL = httputil.NormalizeHTTPBaseURL(strings.TrimSpace(args[1]))
 			printSuccess("server set to " + serverURL)
 
 		case "health":
@@ -484,7 +485,7 @@ func cmdDeployAgent(args []string) error {
 		Port:          port,
 		User:          *sshUser,
 		Secret:        password,
-		ServerURL:     *serverURL,
+		ServerURL:     httputil.NormalizeHTTPBaseURL(*serverURL),
 		AgentName:     *agentName,
 		Image:         *image,
 		ContainerName: *container,
@@ -621,7 +622,7 @@ func splitArgs(line string) []string {
 }
 
 func joinURL(base, path string) string {
-	return strings.TrimRight(base, "/") + path
+	return strings.TrimRight(httputil.NormalizeHTTPBaseURL(base), "/") + path
 }
 
 func trimForTable(s string, limit int) string {
