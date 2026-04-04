@@ -653,7 +653,7 @@ func cmdDiagnosticList(args []string) error {
 	fs := flag.NewFlagSet("diagnostic-list", flag.ContinueOnError)
 	configPath := fs.String("config", "", "Path to diagnostics config YAML (default: auto-discover)")
 	outputJSON := fs.Bool("json", false, "Output in JSON format")
-	
+
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
 	}
@@ -694,7 +694,7 @@ func cmdDiagnosticRun(args []string) error {
 	commandName := fs.String("command", "", "Command name to execute (required)")
 	varFlags := fs.String("var", "", "Variable in format key=value (can be repeated)")
 	outputJSON := fs.Bool("json", true, "Output in JSON format (default true)")
-	
+
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
 	}

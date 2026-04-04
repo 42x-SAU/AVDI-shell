@@ -10,6 +10,12 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d diag"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
 
   server:
     build:
@@ -24,7 +30,8 @@ services:
       DB_SSLMODE: disable
       SERVER_ADDR: :8080
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "8081:8080"
 
