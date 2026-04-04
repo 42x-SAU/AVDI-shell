@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"diag-system/internal/deploy"
+	"diag-system/internal/diagnostics"
 
 	"golang.org/x/term"
 )
@@ -96,6 +97,16 @@ func main() {
 
 	case "deploy-agent":
 		if err := cmdDeployAgent(os.Args[2:]); err != nil {
+			exitErr(err)
+		}
+
+	case "diagnostic-list":
+		if err := cmdDiagnosticList(os.Args[2:]); err != nil {
+			exitErr(err)
+		}
+
+	case "diagnostic-run":
+		if err := cmdDiagnosticRun(os.Args[2:]); err != nil {
 			exitErr(err)
 		}
 
@@ -454,6 +465,103 @@ func prettyPrintJSON(v any) {
 	fmt.Println(string(b))
 }
 
+func cmdDiagnosticList(args []string) error {
+	fs := flag.NewFlagSet("diagnostic-list", flag.ContinueOnError)
+	configPath := fs.String("config", "", "Path to diagnostics config YAML (default: auto-discover)")
+	outputJSON := fs.Bool("json", false, "Output in JSON format")
+	
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parse flags: %w", err)
+	}
+
+	config, err := diagnostics.LoadConfig(*configPath)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	if *outputJSON {
+		prettyPrintJSON(config.Commands)
+		return nil
+	}
+
+	fmt.Println("Available diagnostic commands:")
+	for _, cmd := range config.Commands {
+		fmt.Printf("  %-20s %s\n", cmd.Name, cmd.Description)
+		if len(cmd.Variables) > 0 {
+			fmt.Printf("    Variables: ")
+			for i, v := range cmd.Variables {
+				if i > 0 {
+					fmt.Printf(", ")
+				}
+				fmt.Printf("%s", v.Name)
+				if v.Required {
+					fmt.Printf("(required)")
+				}
+			}
+			fmt.Println()
+		}
+	}
+	return nil
+}
+
+func cmdDiagnosticRun(args []string) error {
+	fs := flag.NewFlagSet("diagnostic-run", flag.ContinueOnError)
+	configPath := fs.String("config", "", "Path to diagnostics config YAML")
+	commandName := fs.String("command", "", "Command name to execute (required)")
+	varFlags := fs.String("var", "", "Variable in format key=value (can be repeated)")
+	outputJSON := fs.Bool("json", true, "Output in JSON format (default true)")
+	
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parse flags: %w", err)
+	}
+
+	if *commandName == "" {
+		return fmt.Errorf("--command is required")
+	}
+
+	// Parse variables
+	variables := make(map[string]string)
+	if *varFlags != "" {
+		// Support multiple --var flags (need custom parsing)
+		// For simplicity, assume single --var for now
+		parts := strings.SplitN(*varFlags, "=", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid variable format, expected key=value")
+		}
+		variables[parts[0]] = parts[1]
+	}
+
+	// Parse additional args as variables
+	for _, arg := range fs.Args() {
+		if strings.Contains(arg, "=") {
+			parts := strings.SplitN(arg, "=", 2)
+			variables[parts[0]] = parts[1]
+		}
+	}
+
+	result, err := diagnostics.ExecuteDiagnostic(*configPath, *commandName, variables)
+	if err != nil {
+		return fmt.Errorf("execute diagnostic: %w", err)
+	}
+
+	if *outputJSON {
+		prettyPrintJSON(result)
+	} else {
+		fmt.Printf("Command: %s %v\n", result.Command, result.Args)
+		fmt.Printf("Exit code: %d\n", result.ExitCode)
+		if result.Stdout != "" {
+			fmt.Printf("Stdout:\n%s\n", result.Stdout)
+		}
+		if result.Stderr != "" {
+			fmt.Printf("Stderr:\n%s\n", result.Stderr)
+		}
+		if result.Error != "" {
+			fmt.Printf("Error: %s\n", result.Error)
+		}
+	}
+	return nil
+}
+
 func printUsage() {
 	fmt.Print(`avdi - CLI for AVDI backend
 
@@ -480,6 +588,12 @@ Commands:
   deploy-agent --ssh-host <host> --ssh-user <user> --server-url <url> --agent-name <name> --image <ref> [--ssh-port <n>]
       Deploy agent container on a remote host over SSH (password: flag, AVDI_SSH_PASSWORD, or prompt)
       SSH port: use --ssh-port (default 22) or AVDI_SSH_PORT when --ssh-port is not passed
+
+  diagnostic-list [--config <path>] [--json]
+      List available diagnostic commands from config file
+
+  diagnostic-run --command <name> [--config <path>] [--var key=value]... [--json]
+      Execute a diagnostic command with optional variables
 
 Global config:
   Environment variables:

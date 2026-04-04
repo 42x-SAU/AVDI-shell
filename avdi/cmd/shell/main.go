@@ -12,6 +12,8 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
+
+	"diag-system/internal/diagnostics"
 )
 
 const (
@@ -142,6 +144,16 @@ func main() {
 				printError(err.Error())
 			}
 
+		case "diagnostic-list":
+			if err := cmdDiagnosticList(args[1:]); err != nil {
+				printError(err.Error())
+			}
+
+		case "diagnostic-run":
+			if err := cmdDiagnosticRun(args[1:]); err != nil {
+				printError(err.Error())
+			}
+
 		case "register-agent", "add-agent":
 			if err := cmdRegisterAgent(client, serverURL, args[1:]); err != nil {
 				printError(err.Error())
@@ -195,8 +207,14 @@ func printHelp() {
 	fmt.Println("  add-agent --name <value>")
 	fmt.Println("      Alias for register-agent")
 	fmt.Println()
-	fmt.Println("  create-task --agent <id> --check <hostname|ping|ports> [--payload <value>] [--retries <n>]")
-	fmt.Println("      Create a new diagnostic task")
+	fmt.Println("  create-task --agent <id> --check <hostname|ping|ports|diagnostic> [--payload <value>] [--retries <n>]")
+	fmt.Println("      Create a new diagnostic task (diagnostic check requires payload with command name)")
+	fmt.Println()
+	fmt.Println("  diagnostic-list [--config <path>] [--json]")
+	fmt.Println("      List available diagnostic commands from config file")
+	fmt.Println()
+	fmt.Println("  diagnostic-run --command <name> [--config <path>] [--var key=value]... [--json]")
+	fmt.Println("      Execute a diagnostic command with optional variables")
 	fmt.Println()
 	fmt.Println("  get /path")
 	fmt.Println("      Raw GET request")
@@ -224,6 +242,10 @@ func printHelp() {
 	fmt.Println("  create-task --agent 3 --check hostname")
 	fmt.Println("  create-task --agent 3 --check ping --payload 8.8.8.8")
 	fmt.Println("  create-task --agent 3 --check ports")
+	fmt.Println("  create-task --agent 3 --check diagnostic --payload '{\"command\":\"disk-usage\"}'")
+	fmt.Println("  diagnostic-list")
+	fmt.Println("  diagnostic-run --command hostname --json")
+	fmt.Println("  diagnostic-run --command ping-target --var target=google.com")
 	fmt.Println("  post /agents/register '{\"name\":\"manual-agent\"}'")
 	fmt.Println()
 }
@@ -583,6 +605,103 @@ func prettyPrintJSON(v any) {
 		return
 	}
 	fmt.Println(string(b))
+}
+
+func cmdDiagnosticList(args []string) error {
+	fs := flag.NewFlagSet("diagnostic-list", flag.ContinueOnError)
+	configPath := fs.String("config", "", "Path to diagnostics config YAML (default: auto-discover)")
+	outputJSON := fs.Bool("json", false, "Output in JSON format")
+	
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parse flags: %w", err)
+	}
+
+	config, err := diagnostics.LoadConfig(*configPath)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	if *outputJSON {
+		prettyPrintJSON(config.Commands)
+		return nil
+	}
+
+	fmt.Println("Available diagnostic commands:")
+	for _, cmd := range config.Commands {
+		fmt.Printf("  %-20s %s\n", cmd.Name, cmd.Description)
+		if len(cmd.Variables) > 0 {
+			fmt.Printf("    Variables: ")
+			for i, v := range cmd.Variables {
+				if i > 0 {
+					fmt.Printf(", ")
+				}
+				fmt.Printf("%s", v.Name)
+				if v.Required {
+					fmt.Printf("(required)")
+				}
+			}
+			fmt.Println()
+		}
+	}
+	return nil
+}
+
+func cmdDiagnosticRun(args []string) error {
+	fs := flag.NewFlagSet("diagnostic-run", flag.ContinueOnError)
+	configPath := fs.String("config", "", "Path to diagnostics config YAML")
+	commandName := fs.String("command", "", "Command name to execute (required)")
+	varFlags := fs.String("var", "", "Variable in format key=value (can be repeated)")
+	outputJSON := fs.Bool("json", true, "Output in JSON format (default true)")
+	
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parse flags: %w", err)
+	}
+
+	if *commandName == "" {
+		return fmt.Errorf("--command is required")
+	}
+
+	// Parse variables
+	variables := make(map[string]string)
+	if *varFlags != "" {
+		// Support multiple --var flags (need custom parsing)
+		// For simplicity, assume single --var for now
+		parts := strings.SplitN(*varFlags, "=", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid variable format, expected key=value")
+		}
+		variables[parts[0]] = parts[1]
+	}
+
+	// Parse additional args as variables
+	for _, arg := range fs.Args() {
+		if strings.Contains(arg, "=") {
+			parts := strings.SplitN(arg, "=", 2)
+			variables[parts[0]] = parts[1]
+		}
+	}
+
+	result, err := diagnostics.ExecuteDiagnostic(*configPath, *commandName, variables)
+	if err != nil {
+		return fmt.Errorf("execute diagnostic: %w", err)
+	}
+
+	if *outputJSON {
+		prettyPrintJSON(result)
+	} else {
+		fmt.Printf("Command: %s %v\n", result.Command, result.Args)
+		fmt.Printf("Exit code: %d\n", result.ExitCode)
+		if result.Stdout != "" {
+			fmt.Printf("Stdout:\n%s\n", result.Stdout)
+		}
+		if result.Stderr != "" {
+			fmt.Printf("Stderr:\n%s\n", result.Stderr)
+		}
+		if result.Error != "" {
+			fmt.Printf("Error: %s\n", result.Error)
+		}
+	}
+	return nil
 }
 
 func printSuccess(msg string) {

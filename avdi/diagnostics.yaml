@@ -1,0 +1,81 @@
+version: "1.0"
+
+commands:
+  - name: "hostname"
+    description: "Получить имя хоста"
+    command: "hostname"
+    args: []
+    parse_output: "text"
+
+  - name: "ip-addresses"
+    description: "Список IP-адресов и сетевых интерфейсов"
+    command: "ip"
+    args: ["addr", "show"]
+    parse_output: "text"
+
+  - name: "os-version"
+    description: "Информация о версии ОС"
+    command: "uname"
+    args: ["-a"]
+    parse_output: "text"
+
+  - name: "disk-usage"
+    description: "Использование дискового пространства"
+    command: "df"
+    args: ["-h"]
+    parse_output: "text"
+
+  - name: "memory-usage"
+    description: "Использование памяти"
+    command: "free"
+    args: ["-m"]
+    parse_output: "text"
+
+  - name: "local-ports"
+    description: "Список открытых портов (локальных)"
+    command: "ss"
+    args: ["-tulpn"]
+    parse_output: "text"
+
+  - name: "ping-target"
+    description: "Пинг целевого хоста"
+    command: "ping"
+    args: ["-c", "4", "{{target}}"]
+    variables:
+      - name: "target"
+        required: true
+        default: "8.8.8.8"
+
+  - name: "scan-ports"
+    description: "Сканирование портов на целевом хосте (требуется nmap)"
+    command: "nmap"
+    args: ["-p", "{{ports}}", "{{target}}"]
+    variables:
+      - name: "target"
+        required: true
+        default: "localhost"
+      - name: "ports"
+        required: false
+        default: "22,80,443,8080"
+    timeout: 60
+
+  - name: "system-load"
+    description: "Нагрузка системы"
+    command: "uptime"
+    args: []
+    parse_output: "text"
+
+  - name: "docker-containers"
+    description: "Список запущенных Docker контейнеров"
+    command: "docker"
+    args: ["ps", "--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}"]
+    parse_output: "text"
+
+  - name: "custom-command"
+    description: "Произвольная команда с параметрами"
+    command: "{{command}}"
+    args: []
+    variables:
+      - name: "command"
+        required: true
+        default: "echo 'no command specified'"
