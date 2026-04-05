@@ -177,6 +177,7 @@ cython_debug/
 data/
 datasets/
 models/
+output/
 outputs/
 logs/
 mlruns/

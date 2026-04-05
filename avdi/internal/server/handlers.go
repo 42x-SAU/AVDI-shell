@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -218,11 +219,76 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListResults(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.QueryContext(r.Context(), `
-		SELECT id, task_id, exit_code, result_json::text, stdout, stderr, logs, created_at
-		FROM task_results
-		ORDER BY created_at DESC
-	`)
+	q := r.URL.Query()
+
+	var limit int
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			http.Error(w, "invalid limit", http.StatusBadRequest)
+			return
+		}
+		if n > 10000 {
+			n = 10000
+		}
+		limit = n
+	}
+
+	var resultID int64
+	if v := q.Get("result_id"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 1 {
+			http.Error(w, "invalid result_id", http.StatusBadRequest)
+			return
+		}
+		resultID = n
+	}
+
+	var taskID int64
+	if v := q.Get("task_id"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 1 {
+			http.Error(w, "invalid task_id", http.StatusBadRequest)
+			return
+		}
+		taskID = n
+	}
+
+	var exitCode *int
+	if v := q.Get("exit_code"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			http.Error(w, "invalid exit_code", http.StatusBadRequest)
+			return
+		}
+		exitCode = &n
+	}
+
+	query := `SELECT id, task_id, exit_code, result_json::text, stdout, stderr, logs, created_at FROM task_results WHERE 1=1`
+	var args []interface{}
+	arg := 1
+	if resultID > 0 {
+		query += fmt.Sprintf(" AND id = $%d", arg)
+		args = append(args, resultID)
+		arg++
+	}
+	if taskID > 0 {
+		query += fmt.Sprintf(" AND task_id = $%d", arg)
+		args = append(args, taskID)
+		arg++
+	}
+	if exitCode != nil {
+		query += fmt.Sprintf(" AND exit_code = $%d", arg)
+		args = append(args, *exitCode)
+		arg++
+	}
+	query += ` ORDER BY created_at DESC`
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT $%d", arg)
+		args = append(args, limit)
+	}
+
+	rows, err := s.db.QueryContext(r.Context(), query, args...)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

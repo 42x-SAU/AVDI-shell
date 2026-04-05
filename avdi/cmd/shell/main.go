@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -135,6 +137,11 @@ func main() {
 				printError(err.Error())
 			}
 
+		case "export-logs":
+			if err := cmdResults(client, serverURL, append([]string{"--export"}, args[1:]...)); err != nil {
+				printError(err.Error())
+			}
+
 		case "create-task":
 			if err := cmdCreateTask(client, serverURL, args[1:]); err != nil {
 				printError(err.Error())
@@ -191,9 +198,13 @@ func printHelp() {
 	fmt.Println("  tasks")
 	fmt.Println("      Show tasks")
 	fmt.Println()
-	fmt.Println("  results [--logs]")
-	fmt.Println("      Show task results")
-	fmt.Println("      --logs   print full stdout/stderr/logs")
+	fmt.Println("  results [--logs] [--export] [--output-dir <path>] [--limit N] [--task ID] [--result-id ID] [--exit-code N]")
+	fmt.Println("      Show task results; --logs: full stdout/stderr/logs on screen")
+	fmt.Println("      --export: write each result to files under output/ (see --output-dir)")
+	fmt.Println("      --limit: only last N results (newest first); filters apply before export")
+	fmt.Println("      --task / --result-id / --exit-code: optional filters (combine as needed)")
+	fmt.Println("  export-logs [same flags as results --export]")
+	fmt.Println("      Same as: results --export")
 	fmt.Println()
 	fmt.Println("  deploy-agent --ssh-host <host> --ssh-user <user> --server-url <url> --agent-name <name> --image <ref>")
 	fmt.Println("      Deploy agent container on remote host over SSH (auto-registers on server)")
@@ -229,6 +240,10 @@ func printHelp() {
 	fmt.Println("  tasks")
 	fmt.Println("  results")
 	fmt.Println("  results --logs")
+	fmt.Println("  results --export")
+	fmt.Println("  results --export --limit 10")
+	fmt.Println("  results --export --task 5 --limit 3")
+	fmt.Println("  export-logs --limit 20")
 	fmt.Println("  deploy-agent --ssh-host 192.168.1.100 --ssh-user root --server-url http://localhost:8081 --agent-name prod-agent1 --image avdi:latest")
 	fmt.Println("  create-task --agent 3 --check hostname")
 	fmt.Println("  create-task --agent 3 --check ping --payload 8.8.8.8")
@@ -321,12 +336,29 @@ func cmdResults(client *http.Client, serverURL string, args []string) error {
 	fs.SetOutput(io.Discard)
 
 	showLogs := fs.Bool("logs", false, "show logs")
+	doExport := fs.Bool("export", false, "write full logs to files under --output-dir")
+	outDir := fs.String("output-dir", "output", "directory for --export (created if missing)")
+	limitN := fs.Int("limit", 0, "fetch at most N newest results (0 = all, server caps at 10000)")
+	taskID := fs.Int64("task", 0, "only results for this task id")
+	resultID := fs.Int64("result-id", 0, "only this result row id")
+	exitCodeStr := fs.String("exit-code", "", "filter by exit code (empty = no filter)")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("failed to parse flags: %w", err)
 	}
 
+	var exitPtr *int
+	if s := strings.TrimSpace(*exitCodeStr); s != "" {
+		ec, err := strconv.Atoi(s)
+		if err != nil {
+			return fmt.Errorf("invalid --exit-code: %w", err)
+		}
+		exitPtr = &ec
+	}
+
+	apiURL := buildResultsAPIURL(serverURL, *limitN, *resultID, *taskID, exitPtr)
+
 	var results []TaskResult
-	status, err := getJSON(client, joinURL(serverURL, "/results"), &results)
+	status, err := getJSON(client, apiURL, &results)
 	if err != nil {
 		return err
 	}
@@ -339,6 +371,13 @@ func cmdResults(client *http.Client, serverURL string, args []string) error {
 		return nil
 	}
 
+	if *doExport {
+		if err := exportResultsToDir(*outDir, results); err != nil {
+			return err
+		}
+		printSuccess(fmt.Sprintf("exported %d result(s) to %s", len(results), *outDir))
+	}
+
 	if *showLogs {
 		fmt.Println(colorBold + "Results with logs" + colorReset)
 		for _, r := range results {
@@ -349,6 +388,10 @@ func cmdResults(client *http.Client, serverURL string, args []string) error {
 			fmt.Printf("Logs:\n%s\n", r.Logs)
 			fmt.Println(strings.Repeat("-", 80))
 		}
+		return nil
+	}
+
+	if *doExport {
 		return nil
 	}
 
@@ -365,6 +408,50 @@ func cmdResults(client *http.Client, serverURL string, args []string) error {
 		)
 	}
 	return w.Flush()
+}
+
+func buildResultsAPIURL(serverURL string, limit int, resultID, taskID int64, exitCode *int) string {
+	base := strings.TrimRight(httputil.NormalizeHTTPBaseURL(serverURL), "/") + "/results"
+	v := url.Values{}
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
+	}
+	if resultID > 0 {
+		v.Set("result_id", strconv.FormatInt(resultID, 10))
+	}
+	if taskID > 0 {
+		v.Set("task_id", strconv.FormatInt(taskID, 10))
+	}
+	if exitCode != nil {
+		v.Set("exit_code", strconv.Itoa(*exitCode))
+	}
+	if enc := v.Encode(); enc != "" {
+		return base + "?" + enc
+	}
+	return base
+}
+
+func exportResultsToDir(dir string, results []TaskResult) error {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create output dir: %w", err)
+	}
+	for _, r := range results {
+		name := filepath.Join(dir, fmt.Sprintf("result-%d-task-%d.txt", r.ID, r.TaskID))
+		var b strings.Builder
+		fmt.Fprintf(&b, "AVDI task result export\n")
+		fmt.Fprintf(&b, "Result ID: %d\n", r.ID)
+		fmt.Fprintf(&b, "Task ID: %d\n", r.TaskID)
+		fmt.Fprintf(&b, "Exit code: %d\n", r.ExitCode)
+		fmt.Fprintf(&b, "Created at: %s\n", formatTime(r.CreatedAt))
+		fmt.Fprintf(&b, "\n=== result_json ===\n%s\n", r.ResultJSON)
+		fmt.Fprintf(&b, "\n=== stdout ===\n%s\n", r.Stdout)
+		fmt.Fprintf(&b, "\n=== stderr ===\n%s\n", r.Stderr)
+		fmt.Fprintf(&b, "\n=== logs ===\n%s\n", r.Logs)
+		if err := os.WriteFile(name, []byte(b.String()), 0644); err != nil {
+			return fmt.Errorf("write %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 func cmdCreateTask(client *http.Client, serverURL string, args []string) error {
