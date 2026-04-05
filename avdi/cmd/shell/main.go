@@ -175,11 +175,9 @@ func main() {
 func printBanner(serverURL string) {
 	fmt.Println(colorBold + colorCyan + "AVDI shell" + colorReset)
 	fmt.Println(colorGray + strings.Repeat("=", 60) + colorReset)
-	fmt.Println("Interactive CLI for AVDI backend")
-	fmt.Println()
 	fmt.Println("Current server:", colorYellow+serverURL+colorReset)
+	fmt.Println(colorGray + "Type help for commands and examples." + colorReset)
 	fmt.Println()
-	printHelp()
 }
 
 func printHelp() {
@@ -389,9 +387,13 @@ func cmdCreateTask(client *http.Client, serverURL string, args []string) error {
 	}
 
 	switch *checkType {
-	case "hostname", "ping", "ports":
+	case "hostname", "ping", "ports", "diagnostic":
 	default:
 		return fmt.Errorf("unsupported --check value: %s", *checkType)
+	}
+
+	if *checkType == "diagnostic" && strings.TrimSpace(*payload) == "" {
+		return fmt.Errorf(`--payload is required for --check diagnostic (JSON: {"command":"<name>"}[, "vars":{...}, "config":"..."])`)
 	}
 
 	reqBody := createTaskRequest{
