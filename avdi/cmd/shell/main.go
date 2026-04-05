@@ -74,6 +74,7 @@ type TaskResult struct {
 func main() {
 	serverURL := httputil.NormalizeHTTPBaseURL(getenv("AVDI_SERVER", "http://localhost:8081"))
 	client := &http.Client{Timeout: 20 * time.Second}
+	aliases := newAliasStore()
 
 	clearScreen()
 	printBanner(serverURL)
@@ -92,7 +93,19 @@ func main() {
 			continue
 		}
 
-		args := splitArgs(line)
+		if strings.HasPrefix(line, "!") {
+			if err := runOSCommand(strings.TrimPrefix(line, "!")); err != nil {
+				printError(err.Error())
+			}
+			continue
+		}
+
+		lineIn := line
+		if !isAliasCommandLine(line) {
+			lineIn = aliases.apply(line)
+		}
+
+		args := splitArgs(lineIn)
 		if len(args) == 0 {
 			continue
 		}
@@ -103,7 +116,81 @@ func main() {
 			return
 
 		case "help":
-			printHelp()
+			if len(args) == 1 {
+				printHelp()
+			} else {
+				if !tryHelpCommands(args[1:]) {
+					printError("unknown help topic: " + strings.Join(args[1:], " "))
+					fmt.Println("Try: help help")
+				}
+			}
+
+		case "alias":
+			rest := ""
+			if len(args) > 1 {
+				rest = strings.Join(args[1:], " ")
+			}
+			if err := cmdAlias(aliases, rest); err != nil {
+				printError(err.Error())
+			}
+
+		case "unalias":
+			if len(args) < 2 {
+				printError("usage: unalias <name>")
+				continue
+			}
+			if err := cmdUnalias(aliases, args[1]); err != nil {
+				printError(err.Error())
+			}
+
+		case "stats":
+			if err := cmdStats(client, serverURL); err != nil {
+				printError(err.Error())
+			}
+
+		case "stats-all":
+			if err := cmdStatsAll(client, serverURL); err != nil {
+				printError(err.Error())
+			}
+
+		case "server-add":
+			if len(args) < 2 {
+				printError("usage: server-add <url>")
+				continue
+			}
+			if err := cmdServersAdd(strings.Join(args[1:], " ")); err != nil {
+				printError(err.Error())
+			}
+
+		case "server-list":
+			if err := cmdServersList(); err != nil {
+				printError(err.Error())
+			}
+
+		case "recurring-list":
+			if err := cmdRecurringList(client, serverURL); err != nil {
+				printError(err.Error())
+			}
+
+		case "recurring-add":
+			if err := cmdRecurringAdd(client, serverURL, args[1:]); err != nil {
+				printError(err.Error())
+			}
+
+		case "recurring-delete":
+			if err := cmdRecurringDelete(client, serverURL, args[1:]); err != nil {
+				printError(err.Error())
+			}
+
+		case "recurring-enable":
+			if err := cmdRecurringEnable(client, serverURL, args[1:], true); err != nil {
+				printError(err.Error())
+			}
+
+		case "recurring-disable":
+			if err := cmdRecurringEnable(client, serverURL, args[1:], false); err != nil {
+				printError(err.Error())
+			}
 
 		case "clear":
 			clearScreen()
@@ -179,11 +266,35 @@ func main() {
 	}
 }
 
+func isAliasCommandLine(line string) bool {
+	a := splitArgs(line)
+	if len(a) == 0 {
+		return false
+	}
+	return a[0] == "alias" || a[0] == "unalias"
+}
+
 func printBanner(serverURL string) {
+	printTurtleLogo()
 	fmt.Println(colorBold + colorCyan + "AVDI shell" + colorReset)
 	fmt.Println(colorGray + strings.Repeat("=", 60) + colorReset)
 	fmt.Println("Current server:", colorYellow+serverURL+colorReset)
-	fmt.Println(colorGray + "Type help for commands and examples." + colorReset)
+	fmt.Println(colorGray + "Type help or help <command> (e.g. help create-task)." + colorReset)
+	fmt.Println()
+}
+
+func printTurtleLogo() {
+	g := colorGreen
+	b := colorBold
+	r := colorReset
+	fmt.Println()
+	fmt.Println(g + b + "        ___________        " + r)
+	fmt.Println(g + b + "     .-'" + r + g + "  ~ ~ ~ ~  " + g + b + "'-.     " + r)
+	fmt.Println(g + b + "    /  " + r + g + ".-----------." + g + b + "  \\    " + r)
+	fmt.Println(g + b + "   |   " + r + g + "\\  shell  /" + g + b + "   |   " + r)
+	fmt.Println(g + b + "    \\  " + r + g + "'---------'" + g + b + "  /    " + r)
+	fmt.Println(g + b + "     '-.__  AVDI  __.-'     " + r)
+	fmt.Println(g + b + "          '-----'          " + r)
 	fmt.Println()
 }
 
@@ -228,8 +339,30 @@ func printHelp() {
 	fmt.Println("  server <url>")
 	fmt.Println("      Change active server URL inside shell")
 	fmt.Println()
-	fmt.Println("  help")
-	fmt.Println("      Show this help")
+	fmt.Println("  stats")
+	fmt.Println("      JSON summary: agents, tasks by status, results, recurring jobs (current server)")
+	fmt.Println("  stats-all")
+	fmt.Println("      Table of /stats for current server + URLs from server-list file")
+	fmt.Println("  server-add <url>")
+	fmt.Println("      Append server URL to ~/.config/avdi/servers.txt (for stats-all)")
+	fmt.Println("  server-list")
+	fmt.Println("      Show saved server URLs (# comments allowed)")
+	fmt.Println()
+	fmt.Println("  alias [name=value | name]")
+	fmt.Println("      List aliases, show one, or set: alias my=create-task --agent 1 --check ping --payload 8.8.8.8")
+	fmt.Println("  unalias <name>")
+	fmt.Println("  !<shell command>")
+	fmt.Println("      Run a system shell command (cmd /C on Windows, $SHELL -c on Unix)")
+	fmt.Println()
+	fmt.Println("  recurring-list")
+	fmt.Println("      List scheduled jobs (POST /recurring on server)")
+	fmt.Println("  recurring-add --agent N --check ping|hostname|ports|diagnostic [--payload ...] [--interval 60] [--retries 0]")
+	fmt.Println("      Repeat: enqueue same check every --interval seconds (min 10, max 86400)")
+	fmt.Println("  recurring-delete --id N")
+	fmt.Println("  recurring-enable --id N | recurring-disable --id N")
+	fmt.Println()
+	fmt.Println("  help [command]")
+	fmt.Println("      This list, or detailed help for one command (e.g. help create-task, help results)")
 	fmt.Println()
 	fmt.Println("  exit | quit")
 	fmt.Println("      Exit shell")

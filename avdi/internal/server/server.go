@@ -65,17 +65,24 @@ func New() (*Server, error) {
     s.routes()
     // Запускаем хаб в горутине
     go s.hub.Run()
+    // Периодические задачи (ping и т.д. по расписанию)
+    go s.runRecurringScheduler(context.Background())
     return s, nil
 }
 
 func (s *Server) routes() {
     s.mux.HandleFunc("GET /health", s.handleHealth)
+    s.mux.HandleFunc("GET /stats", s.handleStats)
     s.mux.HandleFunc("GET /agents", s.handleListAgents)
     s.mux.HandleFunc("POST /agents/register", s.handleRegisterAgent)
     s.mux.HandleFunc("POST /agents/heartbeat", s.withAgentAuth(s.handleHeartbeat))
     s.mux.HandleFunc("GET /tasks", s.handleListTasks)
     s.mux.HandleFunc("POST /tasks", s.handleCreateTask)
     s.mux.HandleFunc("GET /results", s.handleListResults)
+    s.mux.HandleFunc("GET /recurring", s.handleListRecurring)
+    s.mux.HandleFunc("POST /recurring", s.handleCreateRecurring)
+    s.mux.HandleFunc("DELETE /recurring/{id}", s.handleDeleteRecurring)
+    s.mux.HandleFunc("PATCH /recurring/{id}", s.handlePatchRecurring)
     s.mux.HandleFunc("GET /agents/tasks/next", s.withAgentAuth(s.handleNextTask))
     s.mux.HandleFunc("POST /agents/tasks/result", s.withAgentAuth(s.handleSubmitResult))
     // Ручной перезапуск задачи
