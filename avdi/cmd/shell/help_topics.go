@@ -74,6 +74,9 @@ var helpTopics = map[string]string{
 	"recurring-enable":  helpRecurringEnable,
 	"recurring-disable": helpRecurringDisable,
 
+	"script": helpScript,
+	"run":    helpRun,
+
 	"clear": helpClear,
 	"exit":  helpExit,
 	"quit":  helpExit,
@@ -250,20 +253,23 @@ const helpRecurringList = `recurring-list — список периодичес�
 
 Флагов нет. Требуется миграция БД с таблицей recurring_jobs.`
 
-const helpRecurringAdd = `recurring-add — периодически ставить одну и ту же проверку в очередь
+const helpRecurringAdd = `recurring-add — schedule a recurring task
 
   POST /recurring
 
-Флаги:
-  --agent <id>         ID агента (обязательно)
-  --check <type>       hostname | ping | ports | diagnostic (обязательно)
-  --payload <string>   Как у create-task (для diagnostic — JSON)
-  --interval <sec>     Период в секундах (10–86400, по умолчанию 60)
-  --retries <n>        max_retries для каждой создаваемой задачи (по умолчанию 0)
-  --start-in <sec>     Задержка до первого постановления в очередь (по умолчанию 0)
+Flags:
+  --agent <id>         Agent ID (required)
+  --check <type>       hostname | ping | ports | diagnostic | bash (required)
+  --payload <string>   Payload string (for diagnostic — JSON, for bash — script or JSON)
+  --interval <sec>     Interval in seconds (10–86400, default 60)
+  --retries <n>        max_retries for each spawned task (default 0)
+  --start-in <sec>     Delay before first enqueue (default 0)
+  --until <datetime>   End time (RFC3339, e.g., 2026-04-05T23:59:59Z)
+  --max-runs <n>       Maximum number of executions (0 = unlimited)
 
-Пример (ping раз в минуту):
-  recurring-add --agent 2 --check ping --payload 8.8.8.8 --interval 60`
+Examples:
+  recurring-add --agent 2 --check ping --payload 8.8.8.8 --interval 60
+  recurring-add --agent 1 --check bash --payload '{"script":"echo hello"}' --interval 300 --max-runs 5`
 
 const helpRecurringDelete = `recurring-delete — удалить расписание
 
@@ -297,3 +303,24 @@ const helpBang = `Префикс ! — команда операционной �
 Примеры:
   !dir
   !echo test`
+
+const helpScript = `script — manage bash scripts
+
+  script add <name> <content>    Add a new script with unique name
+  script list                    List all saved scripts
+
+Scripts are stored in memory and can be executed with the 'run' command.`
+
+const helpRun = `run — execute a saved bash script on an agent
+
+  run <script-name> --agent <id> [--args arg1,arg2] [--env KEY=VAL,KEY2=VAL2]
+
+Flags:
+  --agent <id>        Agent ID (required)
+  --args <list>       Comma-separated arguments passed to script
+  --env <list>        Comma-separated KEY=VALUE environment variables
+
+Example:
+  run myscript --agent 1 --args "arg1,arg2" --env "PATH=/usr/bin,HOME=/tmp"
+
+The script content is sent as a bash task to the agent.`
