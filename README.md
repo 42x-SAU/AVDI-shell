@@ -348,15 +348,6 @@ ws.onmessage = (event) => {
 
 ###Разработка
 
-MIT License - см. [LICENSE](LICENSE) файл для деталей.
-
-## Контакты
-
-- **GitHub:** [42x-SAU/AVDI-shell](https://github.com/42x-SAU/AVDI-shell)
-- **Issues:** [GitHub Issues](https://github.com/42x-SAU/AVDI-shell/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/42x-SAU/AVDI-shell/discussions)
-- **Email:** [your-email@example.com]
-
 ---
 
 **AVDI-Shell** — надёжное решение для распределённой диагностики инфраструктуры с поддержкой real-time мониторинга и автоматического масштабирования.
