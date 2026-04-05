@@ -1,0 +1,122 @@
+@import './reset.css';
+@import './theme.css';
+@import './desktop.css';
+
+html {
+  scroll-behavior: smooth;
+  font-size: 100%;
+  /* Меньше сдвига макета при блокировке скролла (открытое меню) */
+  scrollbar-gutter: stable;
+}
+
+.container {
+  width: 100%;
+  max-width: 1160px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+
+/* Основной текст: Jura */
+body {
+  font-family: 'Jura', sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  transition:
+    background-color 0.35s ease,
+    color 0.35s ease;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+/* Заголовки: Geologica (в т.ч. заголовок выезжающего меню — не семантический h*) */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.nav-drawer__title {
+  font-family: 'Geologica', sans-serif;
+  font-optical-sizing: auto;
+  font-style: normal;
+  font-variation-settings:
+    'slnt' 0,
+    'CRSV' 0,
+    'SHRP' 0;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--color-accent-hover);
+}
+
+/* Ссылка с классом .btn--primary: иначе цвет текста из a:hover совпадает с фоном при hover */
+a.btn--primary:hover,
+a.btn--primary:focus {
+  color: #fff;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Красные кнопки: мягче обводка фокуса, чем у обычных кнопок */
+button.btn--primary:focus-visible,
+a.btn--primary:focus-visible {
+  outline-color: var(--color-accent-focus-ring);
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  z-index: 999;
+  padding: 0.5rem 1rem;
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: 0 0 8px 0;
+  font-weight: 600;
+}
+
+.skip-link:focus {
+  left: 0;
+  top: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

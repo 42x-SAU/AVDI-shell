@@ -1,0 +1,250 @@
+.nav-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.nav-drawer--open {
+  pointer-events: auto;
+}
+
+.nav-drawer__backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: rgba(15, 23, 42, 0.45);
+  opacity: 0;
+  transition: opacity 0.28s ease;
+  cursor: pointer;
+}
+
+.nav-drawer--open .nav-drawer__backdrop {
+  opacity: 1;
+}
+
+.nav-drawer__panel {
+  position: absolute;
+  /* «Парит» над краями экрана: зазор со всех сторон + учёт вырезов на мобильных */
+  top: max(0.75rem, env(safe-area-inset-top, 0px));
+  right: max(0.75rem, env(safe-area-inset-right, 0px));
+  bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  width: min(
+    20rem,
+    calc(
+      100% - max(0.75rem, env(safe-area-inset-left, 0px)) - max(0.75rem, env(safe-area-inset-right, 0px))
+    )
+  );
+  border-radius: 1rem;
+  /* Как у шапки: полупрозрачность + blur; не зависит от предка с backdrop-filter */
+  background: color-mix(in srgb, var(--color-surface-elevated) 78%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--color-border);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.14),
+    0 4px 12px rgba(0, 0, 0, 0.06);
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.25rem 1.5rem;
+  overflow: hidden;
+}
+
+.nav-drawer--open .nav-drawer__panel {
+  transform: translateX(0);
+}
+
+.nav-drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.nav-drawer__title {
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.nav-drawer__close {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 1.75rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+}
+
+.nav-drawer__close:hover {
+  color: var(--color-text);
+  background: var(--color-accent-soft);
+}
+
+.nav-drawer__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.nav-drawer__link {
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  color: var(--color-text);
+  font-weight: 600;
+  transition: background-color 0.2s ease;
+}
+
+.nav-drawer__link:not(.nav-drawer__link--disabled):hover {
+  background: var(--color-accent-soft);
+}
+
+.nav-drawer__link--disabled {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+  font-weight: 500;
+}
+
+/* Неактивный пункт с пометкой «скоро» справа */
+.nav-drawer__link--with-soon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.nav-drawer__link-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-drawer__soon {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  opacity: 0.9;
+}
+
+.nav-drawer__footer {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Плашка приложения над кнопкой входа */
+.nav-drawer__app-promo {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+  padding: 0.65rem 0.7rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg) 88%, var(--color-accent-soft));
+}
+
+.nav-drawer__app-promo-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+  margin-top: 0.1rem;
+}
+
+.nav-drawer__app-promo-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.nav-drawer__app-promo-title {
+  font-weight: 700;
+  font-size: 0.875rem;
+  line-height: 1.25;
+  color: var(--color-text);
+}
+
+.nav-drawer__app-promo-subtitle {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--color-text-muted);
+}
+
+.nav-drawer__app-install {
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.45rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: not-allowed;
+  white-space: nowrap;
+}
+
+@media (max-width: 360px) {
+  .nav-drawer__app-promo {
+    flex-wrap: wrap;
+  }
+
+  .nav-drawer__app-install {
+    margin-left: auto;
+  }
+}
+
+/* Одна строка: вход слева (гибко), тема справа */
+.nav-drawer__footer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+}
+
+/* Кнопка входа чуть компактнее, чтобы справа поместилась кнопка темы */
+.nav-drawer__login {
+  display: block;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  padding: 0.75rem 0.875rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    filter 0.2s ease;
+}
+
+.nav-drawer__settings-btn {
+  flex-shrink: 0;
+}
+
+.nav-drawer__login:hover {
+  background: var(--color-accent-hover);
+  color: #fff;
+}
+
+.nav-drawer__login:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}

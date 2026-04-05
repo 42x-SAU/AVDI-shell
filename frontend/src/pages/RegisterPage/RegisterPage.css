@@ -1,0 +1,362 @@
+/* Страница регистрации: карточка и поля в стиле страницы входа */
+.register-page {
+  width: 100%;
+}
+
+.register-page__hero {
+  padding: 2.5rem 0 3.5rem;
+  background: var(--hero-gradient);
+  border-bottom: 1px solid var(--color-border);
+  transition: background 0.35s ease;
+}
+
+@media (min-width: 900px) {
+  .register-page__hero {
+    padding: 3.5rem 0 4.5rem;
+  }
+}
+
+.register-page__inner {
+  display: flex;
+  justify-content: center;
+}
+
+.register-panel {
+  width: 100%;
+  max-width: 28rem;
+  padding: 1.5rem 1.5rem 1.85rem;
+  border-radius: 1rem;
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--card-shadow);
+  transition:
+    background-color 0.35s ease,
+    border-color 0.35s ease;
+}
+
+@media (min-width: 560px) {
+  .register-panel {
+    padding: 1.75rem 1.75rem 2rem;
+  }
+}
+
+/* Кнопка «Назад» в левом верхнем углу панели */
+.register-panel__toolbar {
+  margin: 0 0 0.75rem;
+}
+
+.register-panel__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.35rem 0.5rem 0.35rem 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-decoration: none;
+  border-radius: 0.5rem;
+  transition: color 0.2s ease;
+}
+
+.register-panel__back:hover {
+  color: var(--color-accent);
+}
+
+.register-panel__back:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.register-panel__back-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.register-panel__title {
+  margin: 0 0 1.25rem;
+  font-size: clamp(1.35rem, 3.2vw, 1.65rem);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.register-panel__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.register-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.register-field__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.register-field__optional {
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.register-field__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.register-field__input:hover {
+  border-color: var(--color-text-muted);
+}
+
+.register-field__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.register-field__input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 0.85;
+}
+
+.register-field__control {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.register-field__input--with-reveal {
+  padding-right: 2.75rem;
+}
+
+.register-field__reveal {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 0 0.625rem 0.625rem 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.register-field__reveal:hover,
+.register-field__reveal:active {
+  color: var(--color-accent);
+}
+
+.register-field__reveal:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.register-field__reveal-icon {
+  display: block;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+/* Шкала надежности пароля под полем «Пароль» */
+.register-password-strength {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.register-password-strength__track {
+  height: 0.375rem;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.register-password-strength__fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  transition:
+    width 0.25s ease,
+    background-color 0.25s ease;
+}
+
+.register-password-strength__fill--empty {
+  width: 0;
+  background: transparent;
+}
+
+.register-password-strength__fill--weak {
+  width: 33.33%;
+  background: #dc2626;
+}
+
+.register-password-strength__fill--medium {
+  width: 66.66%;
+  background: #ca8a04;
+}
+
+.register-password-strength__fill--strong {
+  width: 100%;
+  background: #16a34a;
+}
+
+:root[data-theme='dark'] .register-password-strength__fill--weak {
+  background: #f87171;
+}
+
+:root[data-theme='dark'] .register-password-strength__fill--medium {
+  background: #eab308;
+}
+
+:root[data-theme='dark'] .register-password-strength__fill--strong {
+  background: #4ade80;
+}
+
+.register-password-strength__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.register-password-strength__label--weak {
+  color: #dc2626;
+}
+
+.register-password-strength__label--medium {
+  color: #a16207;
+}
+
+.register-password-strength__label--strong {
+  color: #15803d;
+}
+
+:root[data-theme='dark'] .register-password-strength__label--weak {
+  color: #f87171;
+}
+
+:root[data-theme='dark'] .register-password-strength__label--medium {
+  color: #eab308;
+}
+
+:root[data-theme='dark'] .register-password-strength__label--strong {
+  color: #4ade80;
+}
+
+/* Согласие с документами */
+.register-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+}
+
+.register-consent__checkbox {
+  flex-shrink: 0;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-top: 0.2rem;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.register-consent__text {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.register-consent__link {
+  font-weight: 600;
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.15em;
+  transition:
+    color 0.2s ease,
+    text-decoration-color 0.2s ease;
+}
+
+.register-consent__link:hover {
+  color: var(--color-accent-hover);
+  text-decoration-color: var(--color-accent-hover);
+}
+
+.register-consent__link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 0.2rem;
+}
+
+.register-panel__actions {
+  margin-top: 0.35rem;
+}
+
+.register-panel__submit {
+  width: 100%;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  font-size: 1rem;
+}
+
+/* Кнопки в духе страницы входа */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 1.25rem;
+  border-radius: 0.625rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.btn--primary {
+  background: var(--color-accent);
+  color: #fff;
+  box-shadow: var(--shadow-btn-primary);
+}
+
+.btn--primary:hover {
+  background: var(--color-accent-hover);
+}
+
+.btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn--primary:disabled:hover {
+  background: var(--color-accent);
+}

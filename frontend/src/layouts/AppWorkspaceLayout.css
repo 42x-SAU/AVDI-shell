@@ -1,0 +1,9 @@
+/* Рабочая зона: растягиваем контент между шапкой и низом окна */
+.app-workspace__main {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: min(75vh, 48rem);
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg);
+}

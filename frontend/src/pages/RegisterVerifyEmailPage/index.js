@@ -1,0 +1,1 @@
+export { RegisterVerifyEmailPage } from './RegisterVerifyEmailPage'

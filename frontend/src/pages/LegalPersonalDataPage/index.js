@@ -1,0 +1,1 @@
+export { LegalPersonalDataPage } from './LegalPersonalDataPage'

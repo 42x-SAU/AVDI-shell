@@ -24,6 +24,7 @@
 - [Ключевые возможности](#ключевые-возможности)
 - [Архитектура](#архитектура)
 - [Структура проекта](#структура-проекта)
+- [Веб-интерфейс (Frontend)](#веб-интерфейс-frontend)
 - [Установка](#установка)
 - [Использование](#использование)
 - [Конфигурация](#конфигурация)
@@ -59,7 +60,7 @@ graph TD
 ## Структура проекта
 
 ```
-avdi/
+avdi/ (backend)
 ├── cmd/ (точки входа)
 │   ├── agent/ (исполнитель диагностических команд)
 │   ├── server/ (REST API сервер)
@@ -80,24 +81,102 @@ avdi/
 ├── diagnostics.yaml (конфигурация команд диагностики)
 ├── docker-compose.yml (полный стек для разработки)
 └── go.mod (зависимости Go)
+
+frontend/ (веб-интерфейс)
+├── public/ (статические файлы)
+├── src/
+│   ├── app/ (ядро приложения)
+│   ├── components/ (React компоненты)
+│   │   ├── common/ (общие компоненты)
+│   │   ├── dashboard/ (компоненты дашборда)
+│   │   ├── layout/ (layout компоненты)
+│   │   └── ui/ (UI компоненты)
+│   ├── pages/ (страницы приложения)
+│   │   ├── HomePage/ (главная страница)
+│   │   ├── LoginPage/ (авторизация)
+│   │   ├── RegisterPage/ (регистрация)
+│   │   └── AppShellPage/ (основной layout)
+│   ├── services/ (API клиенты)
+│   │   ├── apiClient.js (базовый HTTP клиент)
+│   │   ├── monitoringApi.js (API мониторинга)
+│   │   └── monitoringSnapshot.js (снимки состояния)
+│   ├── context/ (React контекст)
+│   ├── hooks/ (кастомные хуки)
+│   ├── router/ (маршрутизация)
+│   ├── styles/ (стили)
+│   ├── utils/ (утилиты)
+│   └── constants/ (константы)
+├── dist/ (production сборка)
+├── package.json (зависимости Node.js)
+├── vite.config.js (конфигурация Vite)
+└── index.html (точка входа)
 ```
 
 ## Установка
 
 ### Требования
 
-- Go 1.25+
-- PostgreSQL 13+
-- Docker (для контейнеризации)
+- **Backend:** Go 1.25+, PostgreSQL 13+, Docker
+- **Frontend:** Node.js 20+, npm
 
-### Локальная установка
+### Полная установка (Backend + Frontend)
+
+```bash
+# Клонирование репозитория
+git clone https://github.com/42x-SAU/AVDI-shell.git
+cd AVDI-shell
+
+# Backend зависимости
+cd avdi
+go mod download
+
+# Frontend зависимости
+cd ../frontend
+npm install
+
+# Запуск полного стека
+cd ..
+docker-compose up -d postgres redis
+
+# В отдельных терминалах:
+# Backend server
+cd avdi && go run ./cmd/server
+
+# Frontend dev server
+cd frontend && npm run dev
+
+# Агент (опционально)
+cd avdi && go run ./cmd/agent
+```
+
+**Результат:**
+- Backend API: `http://localhost:8080`
+- Frontend: `http://localhost:5173`
+- PostgreSQL: `localhost:5432`
+- Redis: `localhost:6379`
+
+### Локальная установка (Backend only)
 
 1. **Клонирование:**
    ```bash
    git clone https://github.com/42x-SAU/AVDI-shell.git
    cd AVDI-shell/avdi
    ```
-# PostgreSQL
+
+2. **Зависимости:**
+   ```bash
+   go mod download
+   ```
+
+3. **База данных:**
+   ```bash
+   createdb avdi_db
+   # Выполнить SQL скрипты из migrations/
+   ```
+
+4. **Переменные окружения (.env):**
+   ```env
+   # PostgreSQL
    DB_HOST=localhost
    DB_PORT=5432
    DB_USER=postgres
@@ -120,20 +199,6 @@ avdi/
    # Agent
    AGENT_NAME=agent-1
    SERVER_URL=http://localhost:8080
-   ```bash
-   go mod download
-   ```
-
-3. **База данных:**
-   ```bash
-   createdb avdi_db
-   # Выполнить SQL скрипты для схемы
-   ```
-
-4. **Переменные окружения (.env):**
-   ```env
-   SERVER_ADDR=:8080
-   DATABASE_URL=postgres://user:pass@localhost:5432/avdi_db
    AGENT_TOKEN=your-token
    ```
 
@@ -142,56 +207,12 @@ avdi/
    # Сервер
    go build -o bin/server ./cmd/server
 
-Полная документация API endpoints:
+   # Агент
+   go build -o bin/agent ./cmd/agent
 
-#### Health & Status
-- `GET /health` - Проверка здоровья сервера
-- `GET /stats` - Статистика системы (агенты, задачи, очередь)
-
-#### Агенты
-- `GET /agents` - Список всех агентов
-- `POST /agents/register` - Регистрация нового агента
-### Диагностические команды
-
-Команды настраиваются в `diagnostics.yaml`. Поддерживаются переменные, аргументы и различные типы парсинга вывода:
-
-```yaml
-version: "1.0"
-commands:
-  - name: "hostname"
-    description: "Получить имя хоста"
-    command: "hostname"
-    parse_output: "text"
-
-  - name: "ping-target"
-    description: "Пинг целевого хоста"
-    command: "ping"
-    args: ["-c", "4", "{{target}}"]
-    variables:
-      - name: "target"
-        required: true
-        default: "8.8.8.8"
-    timeout: 30
-
-  - name: "disk-usage"
-    description: "Использование дискового пространства"
-    command: "df"
-    args: ["-h", "{{path}}"]
-    variables:
-      - name: "path"
-        required: false
-        default: "/"
-```
-
-### Переменные окружения
-
-См. `.env.example` для полного списка переменных. Основные категории:
-
-- **База данных:** `DB_*` - подключение к PostgreSQL
-- **Redis:** `REDIS_URL` - подключение к Redis
-- **Сервер:** `SERVER_ADDR`, `WEBSOCKET_ENABLED`
-- **Очередь задач:** `MAX_CONCURRENT_TASKS_PER_AGENT`, retry настройки
-- **Агент:** `AGENT_NAME`, `SERVER_URL`, `AGENT_TOKENАутентификация:** Агенты используют Bearer токен в заголовке `Authorization: Bearer <token>` или `X-Agent-ID` для идентификации.
+   # Shell
+   go build -o bin/shell ./cmd/shell
+   ```
 
 6. **Запуск:**
    ```bash

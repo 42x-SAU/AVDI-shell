@@ -1,0 +1,252 @@
+.site-footer {
+  flex-shrink: 0;
+  margin-top: auto;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  transition:
+    background-color 0.35s ease,
+    border-color 0.35s ease;
+}
+
+.site-footer__top {
+  padding: 3rem 0 2rem;
+}
+
+.site-footer__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2rem;
+}
+
+@media (max-width: 900px) {
+  .site-footer__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .site-footer__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.site-footer__heading {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.site-footer__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.site-footer__list a {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.site-footer__muted {
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+}
+
+.site-footer__col--wide {
+  grid-column: span 1;
+}
+
+@media (min-width: 901px) {
+  .site-footer__col--wide {
+    grid-column: span 1;
+  }
+}
+
+.site-footer__lead {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  font-size: 0.9375rem;
+}
+
+.site-footer__bottom {
+  border-top: 1px solid var(--color-border);
+  /* Компактная нижняя полоса: те же пропорции, меньше вертикальные отступы */
+  padding: 0.45rem 0;
+  background: var(--color-bg);
+}
+
+/* Две колонки: слева копирайт, GitHub, Telegram; справа madrigal */
+.site-footer__bottom-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto;
+  align-items: start;
+  gap: 0.5rem 1rem;
+}
+
+.site-footer__copy-block {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.site-footer__copy {
+  margin: 0;
+  padding-top: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  max-width: 52ch;
+}
+
+/* Крупная кнопка-ссылка на GitHub (в 3 раза выше прежней «средней») */
+.site-footer__github {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  border-radius: 0.65rem;
+  line-height: 0;
+  transition:
+    opacity 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.site-footer__github:hover {
+  background: var(--color-accent-soft);
+  opacity: 0.95;
+}
+
+.site-footer__github:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.site-footer__github-img {
+  display: block;
+  height: 6.75rem;
+  max-width: 100%;
+  width: auto;
+  object-fit: contain;
+}
+
+/* Telegram под GitHub: в одну строку (с переносом), иконки tg.svg у каждой ссылки */
+.site-footer__tg-wrap {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  margin-top: 0.15rem;
+}
+
+.site-footer__tg-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.6rem;
+  max-width: 100%;
+}
+
+.site-footer__tg-list li {
+  display: flex;
+  align-items: center;
+}
+
+.site-footer__tg-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.site-footer__tg-link:hover {
+  color: var(--color-accent);
+}
+
+.site-footer__tg-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+  display: block;
+}
+
+/* Правый блок: крупный логотип над строкой версии */
+.site-footer__aside {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+/* Ссылка-обёртка: без лишнего зазора под картинкой */
+.site-footer__madrigal-link {
+  display: inline-block;
+  line-height: 0;
+}
+
+.site-footer__madrigal-link:focus-visible {
+  outline: 2px solid var(--color-accent, #e11d2e);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+/* Логотип справа: увеличена только высота; max-width (длина в ряду) прежний */
+.site-footer__madrigal-logo {
+  display: block;
+  width: auto;
+  height: auto;
+  max-height: 14rem;
+  max-width: min(100%, 24rem);
+  object-fit: contain;
+}
+
+@media (min-width: 1024px) {
+  .site-footer__madrigal-logo {
+    max-height: 16rem;
+    max-width: min(100%, 28rem);
+  }
+}
+
+@media (max-width: 640px) {
+  .site-footer__bottom-inner {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  .site-footer__copy-block {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .site-footer__aside {
+    grid-column: 1;
+    grid-row: 2;
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .site-footer__madrigal-logo {
+    max-height: 10rem;
+    max-width: 100%;
+  }
+}

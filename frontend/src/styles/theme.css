@@ -1,0 +1,38 @@
+/* Переменные темы: плавные переходы задаются в global.css */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-bg: #f6f8fb;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-text: #1a2332;
+  --color-text-muted: #5c6b7f;
+  --color-border: #e2e8f0;
+  --color-accent: #e11d2e;
+  /* Меньше контраста к базовому акценту, чем у старого #c41529 */
+  --color-accent-hover: #cf2434;
+  --color-accent-soft: rgba(225, 29, 46, 0.08);
+  /* Слабее подсветка у красных кнопок */
+  --shadow-btn-primary: 0 3px 12px rgba(225, 29, 46, 0.07);
+  --color-accent-focus-ring: rgba(225, 29, 46, 0.38);
+  --header-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+  --card-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  --hero-gradient: linear-gradient(135deg, #f0f4ff 0%, #f8fafc 45%, #fff5f5 100%);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-bg: #0f1419;
+  --color-surface: #161d26;
+  --color-surface-elevated: #1c2530;
+  --color-text: #f1f5f9;
+  --color-text-muted: #94a3b8;
+  --color-border: #2a3544;
+  --color-accent: #f43f5e;
+  --color-accent-hover: #f06078;
+  --color-accent-soft: rgba(244, 63, 94, 0.12);
+  --shadow-btn-primary: 0 3px 14px rgba(244, 63, 94, 0.1);
+  --color-accent-focus-ring: rgba(244, 63, 94, 0.4);
+  --header-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  --card-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  --hero-gradient: linear-gradient(135deg, #121a24 0%, #161d26 50%, #1a1520 100%);
+}

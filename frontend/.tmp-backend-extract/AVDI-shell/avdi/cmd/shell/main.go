@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -74,7 +72,6 @@ type TaskResult struct {
 func main() {
 	serverURL := httputil.NormalizeHTTPBaseURL(getenv("AVDI_SERVER", "http://localhost:8081"))
 	client := &http.Client{Timeout: 20 * time.Second}
-	aliases := newAliasStore()
 
 	clearScreen()
 	printBanner(serverURL)
@@ -93,19 +90,7 @@ func main() {
 			continue
 		}
 
-		if strings.HasPrefix(line, "!") {
-			if err := runOSCommand(strings.TrimPrefix(line, "!")); err != nil {
-				printError(err.Error())
-			}
-			continue
-		}
-
-		lineIn := line
-		if !isAliasCommandLine(line) {
-			lineIn = aliases.apply(line)
-		}
-
-		args := splitArgs(lineIn)
+		args := splitArgs(line)
 		if len(args) == 0 {
 			continue
 		}
@@ -116,81 +101,7 @@ func main() {
 			return
 
 		case "help":
-			if len(args) == 1 {
-				printHelp()
-			} else {
-				if !tryHelpCommands(args[1:]) {
-					printError("unknown help topic: " + strings.Join(args[1:], " "))
-					fmt.Println("Try: help help")
-				}
-			}
-
-		case "alias":
-			rest := ""
-			if len(args) > 1 {
-				rest = strings.Join(args[1:], " ")
-			}
-			if err := cmdAlias(aliases, rest); err != nil {
-				printError(err.Error())
-			}
-
-		case "unalias":
-			if len(args) < 2 {
-				printError("usage: unalias <name>")
-				continue
-			}
-			if err := cmdUnalias(aliases, args[1]); err != nil {
-				printError(err.Error())
-			}
-
-		case "stats":
-			if err := cmdStats(client, serverURL); err != nil {
-				printError(err.Error())
-			}
-
-		case "stats-all":
-			if err := cmdStatsAll(client, serverURL); err != nil {
-				printError(err.Error())
-			}
-
-		case "server-add":
-			if len(args) < 2 {
-				printError("usage: server-add <url>")
-				continue
-			}
-			if err := cmdServersAdd(strings.Join(args[1:], " ")); err != nil {
-				printError(err.Error())
-			}
-
-		case "server-list":
-			if err := cmdServersList(); err != nil {
-				printError(err.Error())
-			}
-
-		case "recurring-list":
-			if err := cmdRecurringList(client, serverURL); err != nil {
-				printError(err.Error())
-			}
-
-		case "recurring-add":
-			if err := cmdRecurringAdd(client, serverURL, args[1:]); err != nil {
-				printError(err.Error())
-			}
-
-		case "recurring-delete":
-			if err := cmdRecurringDelete(client, serverURL, args[1:]); err != nil {
-				printError(err.Error())
-			}
-
-		case "recurring-enable":
-			if err := cmdRecurringEnable(client, serverURL, args[1:], true); err != nil {
-				printError(err.Error())
-			}
-
-		case "recurring-disable":
-			if err := cmdRecurringEnable(client, serverURL, args[1:], false); err != nil {
-				printError(err.Error())
-			}
+			printHelp()
 
 		case "clear":
 			clearScreen()
@@ -221,11 +132,6 @@ func main() {
 
 		case "results":
 			if err := cmdResults(client, serverURL, args[1:]); err != nil {
-				printError(err.Error())
-			}
-
-		case "export-logs":
-			if err := cmdResults(client, serverURL, append([]string{"--export"}, args[1:]...)); err != nil {
 				printError(err.Error())
 			}
 
@@ -266,52 +172,14 @@ func main() {
 	}
 }
 
-func isAliasCommandLine(line string) bool {
-	a := splitArgs(line)
-	if len(a) == 0 {
-		return false
-	}
-	return a[0] == "alias" || a[0] == "unalias"
-}
-
 func printBanner(serverURL string) {
-	printTurtleLogo()
 	fmt.Println(colorBold + colorCyan + "AVDI shell" + colorReset)
 	fmt.Println(colorGray + strings.Repeat("=", 60) + colorReset)
+	fmt.Println("Interactive CLI for AVDI backend")
+	fmt.Println()
 	fmt.Println("Current server:", colorYellow+serverURL+colorReset)
-	fmt.Println(colorGray + "Type help or help <command> (e.g. help create-task)." + colorReset)
 	fmt.Println()
-}
-
-func printTurtleLogo() {
-	// Логотип (символьная графика), зелёный жирный в терминале с поддержкой Unicode.
-	g := colorGreen + colorBold
-	r := colorReset
-	logo := `
- .
-
-
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⣿⣿⣿⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⡿⢿⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⣠⣴⣾⣿⣿⣷⢀⠤⡒⣺⣭⣭⣗⢒⠤⡀⣾⣿⣿⣷⣦⣄⠀⠀⠀⠀
-⠀⠀⢀⣾⣿⠿⠿⠿⡿⡕⠵⠿⢱⣿⣿⣿⣿⡎⠿⠮⢪⢿⠿⠿⠿⣿⣷⡀⠀⠀
-⠀⠀⣾⠟⠁⠀⠀⠀⢸⣸⣿⣿⣷⢝⣛⣛⡫⣾⣿⣿⣇⡇⠀⠀⠀⠈⠻⣷⡀⠀
-⠀⠸⠋⠀⠀⠀⠀⠀⢺⣛⣛⣛⡱⣿⣿⣿⣿⢎⣛⣛⣛⡗⠀⠀⠀⠀⠀⠙⠇⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⢸⢹⣿⣿⣿⣜⣛⣛⣣⣿⣿⣿⡏⡇⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⢧⠿⢿⡫⣾⣿⣿⣷⢝⡿⠿⡼⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⢈⢮⣻⣿⢎⣭⣭⡱⣿⣟⡵⡁⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⢀⣼⣿⣷⠕⢧⣻⠿⠿⣟⡬⠪⣾⣿⣧⡀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⠋⠀⠀⠀⠉⠉⠀⠀⠀⠙⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠈⢿⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠸⡿⠁⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-`
-	fmt.Println()
-	for _, line := range strings.Split(strings.TrimPrefix(logo, "\n"), "\n") {
-		fmt.Println(g + line + r)
-	}
-	fmt.Println()
+	printHelp()
 }
 
 func printHelp() {
@@ -325,13 +193,9 @@ func printHelp() {
 	fmt.Println("  tasks")
 	fmt.Println("      Show tasks")
 	fmt.Println()
-	fmt.Println("  results [--logs] [--export] [--output-dir <path>] [--limit N] [--task ID] [--result-id ID] [--exit-code N]")
-	fmt.Println("      Show task results; --logs: full stdout/stderr/logs on screen")
-	fmt.Println("      --export: write each result to files under output/ (see --output-dir)")
-	fmt.Println("      --limit: only last N results (newest first); filters apply before export")
-	fmt.Println("      --task / --result-id / --exit-code: optional filters (combine as needed)")
-	fmt.Println("  export-logs [same flags as results --export]")
-	fmt.Println("      Same as: results --export")
+	fmt.Println("  results [--logs]")
+	fmt.Println("      Show task results")
+	fmt.Println("      --logs   print full stdout/stderr/logs")
 	fmt.Println()
 	fmt.Println("  deploy-agent --ssh-host <host> --ssh-user <user> --server-url <url> --agent-name <name> --image <ref>")
 	fmt.Println("      Deploy agent container on remote host over SSH (auto-registers on server)")
@@ -355,30 +219,8 @@ func printHelp() {
 	fmt.Println("  server <url>")
 	fmt.Println("      Change active server URL inside shell")
 	fmt.Println()
-	fmt.Println("  stats")
-	fmt.Println("      JSON summary: agents, tasks by status, results, recurring jobs (current server)")
-	fmt.Println("  stats-all")
-	fmt.Println("      Table of /stats for current server + URLs from server-list file")
-	fmt.Println("  server-add <url>")
-	fmt.Println("      Append server URL to ~/.config/avdi/servers.txt (for stats-all)")
-	fmt.Println("  server-list")
-	fmt.Println("      Show saved server URLs (# comments allowed)")
-	fmt.Println()
-	fmt.Println("  alias [name=value | name]")
-	fmt.Println("      List aliases, show one, or set: alias my=create-task --agent 1 --check ping --payload 8.8.8.8")
-	fmt.Println("  unalias <name>")
-	fmt.Println("  !<shell command>")
-	fmt.Println("      Run a system shell command (cmd /C on Windows, $SHELL -c on Unix)")
-	fmt.Println()
-	fmt.Println("  recurring-list")
-	fmt.Println("      List scheduled jobs (POST /recurring on server)")
-	fmt.Println("  recurring-add --agent N --check ping|hostname|ports|diagnostic [--payload ...] [--interval 60] [--retries 0]")
-	fmt.Println("      Repeat: enqueue same check every --interval seconds (min 10, max 86400)")
-	fmt.Println("  recurring-delete --id N")
-	fmt.Println("  recurring-enable --id N | recurring-disable --id N")
-	fmt.Println()
-	fmt.Println("  help [command]")
-	fmt.Println("      This list, or detailed help for one command (e.g. help create-task, help results)")
+	fmt.Println("  help")
+	fmt.Println("      Show this help")
 	fmt.Println()
 	fmt.Println("  exit | quit")
 	fmt.Println("      Exit shell")
@@ -389,10 +231,6 @@ func printHelp() {
 	fmt.Println("  tasks")
 	fmt.Println("  results")
 	fmt.Println("  results --logs")
-	fmt.Println("  results --export")
-	fmt.Println("  results --export --limit 10")
-	fmt.Println("  results --export --task 5 --limit 3")
-	fmt.Println("  export-logs --limit 20")
 	fmt.Println("  deploy-agent --ssh-host 192.168.1.100 --ssh-user root --server-url http://localhost:8081 --agent-name prod-agent1 --image avdi:latest")
 	fmt.Println("  create-task --agent 3 --check hostname")
 	fmt.Println("  create-task --agent 3 --check ping --payload 8.8.8.8")
@@ -485,29 +323,12 @@ func cmdResults(client *http.Client, serverURL string, args []string) error {
 	fs.SetOutput(io.Discard)
 
 	showLogs := fs.Bool("logs", false, "show logs")
-	doExport := fs.Bool("export", false, "write full logs to files under --output-dir")
-	outDir := fs.String("output-dir", "output", "directory for --export (created if missing)")
-	limitN := fs.Int("limit", 0, "fetch at most N newest results (0 = all, server caps at 10000)")
-	taskID := fs.Int64("task", 0, "only results for this task id")
-	resultID := fs.Int64("result-id", 0, "only this result row id")
-	exitCodeStr := fs.String("exit-code", "", "filter by exit code (empty = no filter)")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("failed to parse flags: %w", err)
 	}
 
-	var exitPtr *int
-	if s := strings.TrimSpace(*exitCodeStr); s != "" {
-		ec, err := strconv.Atoi(s)
-		if err != nil {
-			return fmt.Errorf("invalid --exit-code: %w", err)
-		}
-		exitPtr = &ec
-	}
-
-	apiURL := buildResultsAPIURL(serverURL, *limitN, *resultID, *taskID, exitPtr)
-
 	var results []TaskResult
-	status, err := getJSON(client, apiURL, &results)
+	status, err := getJSON(client, joinURL(serverURL, "/results"), &results)
 	if err != nil {
 		return err
 	}
@@ -520,13 +341,6 @@ func cmdResults(client *http.Client, serverURL string, args []string) error {
 		return nil
 	}
 
-	if *doExport {
-		if err := exportResultsToDir(*outDir, results); err != nil {
-			return err
-		}
-		printSuccess(fmt.Sprintf("exported %d result(s) to %s", len(results), *outDir))
-	}
-
 	if *showLogs {
 		fmt.Println(colorBold + "Results with logs" + colorReset)
 		for _, r := range results {
@@ -537,10 +351,6 @@ func cmdResults(client *http.Client, serverURL string, args []string) error {
 			fmt.Printf("Logs:\n%s\n", r.Logs)
 			fmt.Println(strings.Repeat("-", 80))
 		}
-		return nil
-	}
-
-	if *doExport {
 		return nil
 	}
 
@@ -557,50 +367,6 @@ func cmdResults(client *http.Client, serverURL string, args []string) error {
 		)
 	}
 	return w.Flush()
-}
-
-func buildResultsAPIURL(serverURL string, limit int, resultID, taskID int64, exitCode *int) string {
-	base := strings.TrimRight(httputil.NormalizeHTTPBaseURL(serverURL), "/") + "/results"
-	v := url.Values{}
-	if limit > 0 {
-		v.Set("limit", strconv.Itoa(limit))
-	}
-	if resultID > 0 {
-		v.Set("result_id", strconv.FormatInt(resultID, 10))
-	}
-	if taskID > 0 {
-		v.Set("task_id", strconv.FormatInt(taskID, 10))
-	}
-	if exitCode != nil {
-		v.Set("exit_code", strconv.Itoa(*exitCode))
-	}
-	if enc := v.Encode(); enc != "" {
-		return base + "?" + enc
-	}
-	return base
-}
-
-func exportResultsToDir(dir string, results []TaskResult) error {
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("create output dir: %w", err)
-	}
-	for _, r := range results {
-		name := filepath.Join(dir, fmt.Sprintf("result-%d-task-%d.txt", r.ID, r.TaskID))
-		var b strings.Builder
-		fmt.Fprintf(&b, "AVDI task result export\n")
-		fmt.Fprintf(&b, "Result ID: %d\n", r.ID)
-		fmt.Fprintf(&b, "Task ID: %d\n", r.TaskID)
-		fmt.Fprintf(&b, "Exit code: %d\n", r.ExitCode)
-		fmt.Fprintf(&b, "Created at: %s\n", formatTime(r.CreatedAt))
-		fmt.Fprintf(&b, "\n=== result_json ===\n%s\n", r.ResultJSON)
-		fmt.Fprintf(&b, "\n=== stdout ===\n%s\n", r.Stdout)
-		fmt.Fprintf(&b, "\n=== stderr ===\n%s\n", r.Stderr)
-		fmt.Fprintf(&b, "\n=== logs ===\n%s\n", r.Logs)
-		if err := os.WriteFile(name, []byte(b.String()), 0644); err != nil {
-			return fmt.Errorf("write %s: %w", name, err)
-		}
-	}
-	return nil
 }
 
 func cmdCreateTask(client *http.Client, serverURL string, args []string) error {
@@ -623,13 +389,9 @@ func cmdCreateTask(client *http.Client, serverURL string, args []string) error {
 	}
 
 	switch *checkType {
-	case "hostname", "ping", "ports", "diagnostic":
+	case "hostname", "ping", "ports":
 	default:
 		return fmt.Errorf("unsupported --check value: %s", *checkType)
-	}
-
-	if *checkType == "diagnostic" && strings.TrimSpace(*payload) == "" {
-		return fmt.Errorf(`--payload is required for --check diagnostic (JSON: {"command":"<name>"}[, "vars":{...}, "config":"..."])`)
 	}
 
 	reqBody := createTaskRequest{

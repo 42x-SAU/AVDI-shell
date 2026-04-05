@@ -1,0 +1,113 @@
+.app-settings-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.app-settings-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease;
+}
+
+.app-settings-menu__trigger:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.app-settings-menu__trigger:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.app-settings-menu__trigger[aria-expanded='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.app-settings-menu__trigger-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.app-settings-menu__popover {
+  position: fixed;
+  z-index: 250;
+  width: 16.25rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-elevated);
+  box-shadow: var(--card-shadow);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.app-settings-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.app-settings-menu__row + .app-settings-menu__row {
+  border-top: 1px solid var(--color-border);
+}
+
+.app-settings-menu__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.3;
+}
+
+.app-settings-menu__switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-border);
+  cursor: pointer;
+  transition: background-color 0.25s ease;
+}
+
+.app-settings-menu__switch--on {
+  background: var(--color-accent-soft);
+}
+
+.app-settings-menu__switch:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.app-settings-menu__switch-thumb {
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  background: var(--color-surface-elevated);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.25s ease;
+}
+
+.app-settings-menu__switch--on .app-settings-menu__switch-thumb {
+  transform: translateX(1.2rem);
+  background: var(--color-accent);
+}

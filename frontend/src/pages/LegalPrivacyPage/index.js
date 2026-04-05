@@ -1,0 +1,1 @@
+export { LegalPrivacyPage } from './LegalPrivacyPage'

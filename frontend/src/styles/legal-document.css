@@ -1,0 +1,48 @@
+/* Общий вид страниц юридических документов */
+.legal-doc-page {
+  width: 100%;
+}
+
+.legal-doc-page__hero {
+  padding: 2.5rem 0 3.5rem;
+  background: var(--hero-gradient);
+  border-bottom: 1px solid var(--color-border);
+  transition: background 0.35s ease;
+}
+
+@media (min-width: 900px) {
+  .legal-doc-page__hero {
+    padding: 3.5rem 0 4.5rem;
+  }
+}
+
+.legal-doc-page__inner {
+  max-width: 42rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.legal-doc-page__title {
+  margin: 0 0 0.75rem;
+  font-size: clamp(1.35rem, 3vw, 1.75rem);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.legal-doc-page__lead {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.legal-doc-page__title--center,
+.legal-doc-page__lead--center {
+  text-align: center;
+}
+
+.legal-doc-page__lead--center {
+  max-width: 36rem;
+  margin-left: auto;
+  margin-right: auto;
+}

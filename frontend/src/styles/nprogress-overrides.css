@@ -1,0 +1,11 @@
+/* Красная полоса nprogress; спиннер отключён в коде */
+#nprogress .bar {
+  background: var(--color-accent, #e11d2e) !important;
+  height: 3px !important;
+}
+
+#nprogress .peg {
+  box-shadow:
+    0 0 10px var(--color-accent, #e11d2e),
+    0 0 5px var(--color-accent, #e11d2e) !important;
+}
