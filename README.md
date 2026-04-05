@@ -29,36 +29,57 @@
 - [Конфигурация](#конфигурация)
 - [Docker](#docker)
 - [Мониторинг](#мониторинг)
+- [Разработка](#разработка)
 - [Лицензия](#лицензия)
+- [Контакты](#контакты)
 
 ## Архитектура
 
 ```mermaid
 graph TD
-    Client --> Server
+    Client[Web Client / API] --> Server[REST API Server]
     Server --> DB[(PostgreSQL)]
+    Server --> Redis[(Redis Cache)]
     Server --> Queue[Task Queue]
-    Queue --> Agent1
-    Queue --> Agent2
+    Queue --> Agent1[Agent 1]
+    Queue --> Agent2[Agent 2]
     Agent1 --> Server
     Agent2 --> Server
+    Server --> WS[WebSocket Hub]
+    WS --> Client
 ```
 
 **Компоненты:**
-- **Server**: REST API сервер
-- **Agent**: Выполняет диагностические команды
-- **Queue**: Очередь задач на базе PostgreSQL
+- **Server**: REST API сервер на Go с WebSocket поддержкой
+- **Agent**: Лёгкие исполнители диагностических команд
+- **PostgreSQL**: Основная БД для хранения задач, результатов и агентов
+- **Redis**: Кэш для лимитера задач, retry-механизмов и pub/sub
+- **Queue**: Распределённая очередь задач с поддержкой лимитов и retry
 
 ## Структура проекта
 
 ```
 avdi/
-├── cmd/ (точки входа: server, agent, shell)
-├── internal/ (логика: server, agent, storage, queue, diagnostics)
-├── pkg/ (logger)
-├── docker/ (Dockerfiles)
-├── diagnostics.yaml (конфигурация команд)
-└── go.mod
+├── cmd/ (точки входа)
+│   ├── agent/ (исполнитель диагностических команд)
+│   ├── server/ (REST API сервер)
+│   └── shell/ (интерактивная консоль)
+├── internal/ (бизнес-логика)
+│   ├── agent/ (логика агента)
+│   ├── deploy/ (SSH развертывание агентов)
+│   ├── diagnostics/ (парсер YAML конфигураций)
+│   ├── httputil/ (HTTP утилиты)
+│   ├── queue/ (очередь задач с лимитером и retry)
+│   ├── redis/ (Redis клиент)
+│   ├── server/ (HTTP handlers, WebSocket)
+│   └── storage/ (PostgreSQL модели и запросы)
+├── pkg/ (общие пакеты)
+│   └── logger/ (структурированное логирование)
+├── migrations/ (SQL схемы БД)
+├── docker/ (Dockerfiles для агента и сервера)
+├── diagnostics.yaml (конфигурация команд диагностики)
+├── docker-compose.yml (полный стек для разработки)
+└── go.mod (зависимости Go)
 ```
 
 ## Установка
@@ -76,8 +97,29 @@ avdi/
    git clone https://github.com/42x-SAU/AVDI-shell.git
    cd AVDI-shell/avdi
    ```
+# PostgreSQL
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_USER=postgres
+   DB_PASSWORD=postgres
+   DB_NAME=diag
+   DB_SSLMODE=disable
 
-2. **Зависимости:**
+   # Redis
+   REDIS_URL=redis://localhost:6379
+
+   # Server
+   SERVER_ADDR=:8080
+   WEBSOCKET_ENABLED=true
+
+   # Task Management
+   MAX_CONCURRENT_TASKS_PER_AGENT=3
+   BASE_RETRY_DELAY_SECONDS=30
+   MAX_RETRY_DELAY_SECONDS=3600
+
+   # Agent
+   AGENT_NAME=agent-1
+   SERVER_URL=http://localhost:8080
    ```bash
    go mod download
    ```
@@ -100,12 +142,56 @@ avdi/
    # Сервер
    go build -o bin/server ./cmd/server
 
-   # Агент
-   go build -o bin/agent ./cmd/agent
+Полная документация API endpoints:
 
-   # Shell
-   go build -o bin/shell ./cmd/shell
-   ```
+#### Health & Status
+- `GET /health` - Проверка здоровья сервера
+- `GET /stats` - Статистика системы (агенты, задачи, очередь)
+
+#### Агенты
+- `GET /agents` - Список всех агентов
+- `POST /agents/register` - Регистрация нового агента
+### Диагностические команды
+
+Команды настраиваются в `diagnostics.yaml`. Поддерживаются переменные, аргументы и различные типы парсинга вывода:
+
+```yaml
+version: "1.0"
+commands:
+  - name: "hostname"
+    description: "Получить имя хоста"
+    command: "hostname"
+    parse_output: "text"
+
+  - name: "ping-target"
+    description: "Пинг целевого хоста"
+    command: "ping"
+    args: ["-c", "4", "{{target}}"]
+    variables:
+      - name: "target"
+        required: true
+        default: "8.8.8.8"
+    timeout: 30
+
+  - name: "disk-usage"
+    description: "Использование дискового пространства"
+    command: "df"
+    args: ["-h", "{{path}}"]
+    variables:
+      - name: "path"
+        required: false
+        default: "/"
+```
+
+### Переменные окружения
+
+См. `.env.example` для полного списка переменных. Основные категории:
+
+- **База данных:** `DB_*` - подключение к PostgreSQL
+- **Redis:** `REDIS_URL` - подключение к Redis
+- **Сервер:** `SERVER_ADDR`, `WEBSOCKET_ENABLED`
+- **Очередь задач:** `MAX_CONCURRENT_TASKS_PER_AGENT`, retry настройки
+- **Агент:** `AGENT_NAME`, `SERVER_URL`, `AGENT_TOKENАутентификация:** Агенты используют Bearer токен в заголовке `Authorization: Bearer <token>` или `X-Agent-ID` для идентификации.
 
 6. **Запуск:**
    ```bash
@@ -201,15 +287,150 @@ docker push registry.example.com/avdi-agent:latest
 
 #### Сервер
 
-```bash
-docker build -f docker/server.Dockerfile -t avdi-server:latest .
+```yaml
+version: '3.8'
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: diag
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+### Health Checks
+- **Сервер:** `GET /health` возвращает `{"status": "ok"}`
+- **База данных:** Автоматическая проверка подключения при старте
+- **Redis:** Проверка доступности для дополнительных функций
+
+### Метрики
+- **Heartbeat:** Агенты отправляют статус каждые 15 секунд
+- **Очередь:** Мониторинг количества задач в очереди
+- **Лимиты:** Отслеживание одновременных задач на агента
+
+### Логирование
+- Структурированные логи в JSON формате
+- Уровни: debug, info, warn, error
+- Вывод в stdout/stderr для контейнеров
+
+### WebSocket Real-time
+Подключение к `/ws` для получения обновлений:
+```javascript
+const ws = new WebSocket('ws://localhost:8080/ws');
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Update:', data);
+};
 ```
 
-### Структура Dockerfile
+###Разработка
 
-#### Agent (agent.Dockerfile)
+MIT License - см. [LICENSE](LICENSE) файл для деталей.
 
-```dockerfile
+## Контакты
+
+- **GitHub:** [42x-SAU/AVDI-shell](https://github.com/42x-SAU/AVDI-shell)
+- **Issues:** [GitHub Issues](https://github.com/42x-SAU/AVDI-shell/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/42x-SAU/AVDI-shell/discussions)
+- **Email:** [your-email@example.com]
+
+---
+
+**AVDI-Shell** — надёжное решение для распределённой диагностики инфраструктуры с поддержкой real-time мониторинга и автоматического масштабирования.
+# Сборка всех компонентов
+go build -o bin/server ./cmd/server
+go build -o bin/agent ./cmd/agent
+go build -o bin/shell ./cmd/shell
+
+# Запуск тестов
+go test ./...
+
+# Линтинг
+golangci-lint run
+```
+
+### Добавление новых команд диагностики
+
+1. Добавьте команду в `diagnostics.yaml`
+2. Протестируйте на агенте
+3. Обновите документацию
+
+### Contributing
+
+1. Fork репозиторий
+2. Создайте feature branch: `git checkout -b feature/amazing-feature`
+3. Commit изменения: `git commit -m 'Add amazing feature'`
+4. Push branch: `git push origin feature/amazing-feature`
+5. Создайте Pull Request
+
+### Roadmap
+
+- [ ] Web UI интерфейс
+- [ ] Поддержка периодических задач (cron-like)
+- [ ] Метрики и графики (Prometheus/Grafana)
+- [ ] Распределённое развертывание агентов
+- [ ] Поддержка Windows агентов
+- [ ] API токены для пользователей
+- [ ] Ролевая модель доступа
+- Убедитесь, что агент живой (heartbeat)
+- Проверьте логи агента на ошибки выполнения команд
+
+#### Redis недоступен
+- Система работает без Redis, но без лимитов и retry
+- Проверьте `REDIS_URL` и доступность Redis
+
+#### База данных
+- Выполните миграции: `migrations/*.sql`
+- Проверьте подключение: `DB_*` переменные postgres -d diag"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: diag
+      DB_SSLMODE: disable
+      REDIS_URL: redis://redis:6379
+      WEBSOCKET_ENABLED: "true"
+      MAX_CONCURRENT_TASKS_PER_AGENT: "3"
+      BASE_RETRY_DELAY_SECONDS: "30"
+      MAX_RETRY_DELAY_SECONDS: "3600"
+      SERVER_ADDR: :8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+```
+
+**Запуск:**
+```bash
+docker-compose up -d
+docker-compose logs -f server
 FROM golang:1.25-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum* ./
