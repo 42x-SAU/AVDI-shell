@@ -33,6 +33,9 @@ const (
 	colorBold   = "\033[1m"
 )
 
+// scripts stores user-defined bash scripts by name
+var scripts = make(map[string]string) // name -> content
+
 type createTaskRequest struct {
 	AgentID    int64  `json:"agent_id"`
 	CheckType  string `json:"check_type"`
@@ -256,6 +259,30 @@ func main() {
 
 		case "post":
 			if err := cmdRawPost(client, serverURL, args[1:]); err != nil {
+				printError(err.Error())
+			}
+
+		case "script":
+			if len(args) < 2 {
+				printError("usage: script add <name> <content> OR script list")
+				continue
+			}
+			subcmd := args[1]
+			switch subcmd {
+			case "add":
+				if err := cmdScriptAdd(args[2:]); err != nil {
+					printError(err.Error())
+				}
+			case "list":
+				if err := cmdScriptList(); err != nil {
+					printError(err.Error())
+				}
+			default:
+				printError("unknown script subcommand: " + subcmd)
+			}
+
+		case "run":
+			if err := cmdRun(client, serverURL, args[1:]); err != nil {
 				printError(err.Error())
 			}
 

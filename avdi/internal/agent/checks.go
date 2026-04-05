@@ -4,6 +4,7 @@ import (
     "bytes"
     "encoding/json"
     "fmt"
+    "os"
     "os/exec"
     "strings"
 
@@ -28,6 +29,8 @@ func RunCheck(checkType, payload string) CheckResult {
         return pingCheck(payload)
     case "diagnostic":
         return diagnosticCheck(payload)
+    case "bash":
+        return bashCheck(payload)
     default:
         return CheckResult{
             ExitCode: 1,
@@ -145,4 +148,102 @@ func diagnosticCheck(payload string) CheckResult {
         Stderr:     result.Stderr,
         Logs:       logs,
     }
+}
+
+func bashCheck(payload string) CheckResult {
+    // payload может быть либо непосредственно bash-скриптом, либо JSON с полями script и args
+    var req struct {
+        Script string   `json:"script"`
+        Args   []string `json:"args,omitempty"`
+        Env    map[string]string `json:"env,omitempty"`
+    }
+    
+    // Пытаемся разобрать как JSON, если не получается, считаем payload самим скриптом
+    if err := json.Unmarshal([]byte(payload), &req); err != nil || req.Script == "" {
+        req.Script = payload
+    }
+    
+    if req.Script == "" {
+        return CheckResult{
+            ExitCode: 1,
+            Stderr:   "empty script",
+            Logs:     "bash script is empty",
+        }
+    }
+    
+    // Создаем временный файл со скриптом
+    tmpFile, err := os.CreateTemp("", "avdi-bash-*.sh")
+    if err != nil {
+        return CheckResult{
+            ExitCode: 1,
+            Stderr:   "failed to create temp file",
+            Logs:     "temp file creation error: " + err.Error(),
+        }
+    }
+    defer os.Remove(tmpFile.Name())
+    
+    // Записываем скрипт
+    if _, err := tmpFile.WriteString(req.Script); err != nil {
+        return CheckResult{
+            ExitCode: 1,
+            Stderr:   "failed to write script",
+            Logs:     "script write error: " + err.Error(),
+        }
+    }
+    tmpFile.Close()
+    
+    // Делаем файл исполняемым
+    if err := os.Chmod(tmpFile.Name(), 0755); err != nil {
+        return CheckResult{
+            ExitCode: 1,
+            Stderr:   "failed to make script executable",
+            Logs:     "chmod error: " + err.Error(),
+        }
+    }
+    
+    // Выполняем скрипт
+    cmd := exec.Command("/bin/bash", append([]string{tmpFile.Name()}, req.Args...)...)
+    if req.Env != nil {
+        for k, v := range req.Env {
+            cmd.Env = append(os.Environ(), k+"="+v)
+        }
+    }
+    
+    var stdout, stderr bytes.Buffer
+    cmd.Stdout = &stdout
+    cmd.Stderr = &stderr
+    
+    err = cmd.Run()
+    exitCode := 0
+    if err != nil {
+        if exitErr, ok := err.(*exec.ExitError); ok {
+            exitCode = exitErr.ExitCode()
+        } else {
+            exitCode = 1
+        }
+    }
+    
+    resultJSON, _ := json.Marshal(map[string]interface{}{
+        "script": req.Script[:min(100, len(req.Script))] + "...",
+        "exit_code": exitCode,
+        "stdout_length": len(stdout.String()),
+        "stderr_length": len(stderr.String()),
+    })
+    
+    logs := fmt.Sprintf("bash script executed\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+    
+    return CheckResult{
+        ExitCode:   exitCode,
+        ResultJSON: string(resultJSON),
+        Stdout:     stdout.String(),
+        Stderr:     stderr.String(),
+        Logs:       logs,
+    }
+}
+
+func min(a, b int) int {
+    if a < b {
+        return a
+    }
+    return b
 }
